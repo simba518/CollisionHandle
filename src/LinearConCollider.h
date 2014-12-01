@@ -1,7 +1,12 @@
 #ifndef _LINEARCONCOLLIDER_H_
 #define _LINEARCONCOLLIDER_H_
 
+#include <vector>
 #include <FEMCollider.h>
+#include <eigen3/Eigen/Dense>
+using namespace Eigen;
+using namespace std;
+USE_PRJ_NAMESPACE
 
 typedef vector<Vector4d,Eigen::aligned_allocator<Vector4d> > VVec4d;
 typedef vector<VVec4d > VVVec4d;
@@ -23,20 +28,24 @@ struct SelfConCache{
 class LinearConCollider:public FEMCollider{
   
 public:
-  LinearConCollider(VVVec4d &geom_con, vector<SelfConCache> &self_con,const size_t num_verts):
-	geom_con(geom_con),self_con(self_con){
+  LinearConCollider(VVVec4d &geom_con, vector<SelfConCache> &self_con, VectorXd &pos0, const size_t num_verts):
+	geom_con(geom_con),self_con(self_con),pos0(pos0){
 	self_con.clear();
 	geom_con.clear();
 	geom_con.resize(num_verts);
   }
   
-  void handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV){}
+  void handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV);
 
-  void handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n){}
+  void handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n);
+
+protected: 
+  void addConPlane(VVec4d &con_planes, const Vector4d &p)const;
   
 private:
   VVVec4d &geom_con;
   vector<SelfConCache> &self_con;
+  VectorXd &pos0;
 };
 
 class SelfCollHandler{

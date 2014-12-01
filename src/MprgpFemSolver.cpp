@@ -1,9 +1,23 @@
+#include <FEMCollision.h>
+#include <MPRGPSolver.h>
 #include "MprgpFemSolver.h"
+using namespace MATH;
+USE_PRJ_NAMESPACE
+
+MprgpFemSolver::MprgpFemSolver():FEMSolver(3){
+	
+  boost::shared_ptr<FEMCollision> coll(new SBVHFEMCollision);
+  _mesh.reset(new FEMMesh(3,coll));
+  resetImplicitEuler();
+  setCollK(1E5f);
+  _mesh->setCellSz(1.0f);
+  setSelfColl(true);
+}
 
 void MprgpFemSolver::advance(const double dt){
 	
   buildVarOffset();
-  initVelPos();
+  initVelPos(dt);
   handleCollDetection();
   forward(dt);
   updateMesh(dt);
@@ -14,13 +28,26 @@ void MprgpFemSolver::handleCollDetection(){
   for ( size_t i=0; i < _mesh->nrB(); i++ )
 	_mesh->getB(i)._system->beforeCollision();
 
-  LinearConCollider coll( linear_con, self_con, _mesh->nrV() );
+  linear_con.resize(_mesh->nrV());
 
-  if ( _geom )
+  
+  static int frame = 0;
+  ostringstream oss3;
+  oss3 << "./tempt/coll_"<< frame++ << ".vtk";
+  DebugFEMCollider coll_debug(oss3.str(),3);
+
+  LinearConCollider coll( linear_con, self_con, pos0, _mesh->nrV() );
+
+  if ( _geom ){
 	_mesh->getColl().collideGeom( *_geom,coll,true );
+	_mesh->getColl().collideGeom( *_geom,coll_debug,true );
+  }
 
   if ( _selfColl ) {
-	_mesh->getColl().collideMesh(coll,true);
+
+	_mesh->getColl().collideMesh(coll, true);
+	_mesh->getColl().collideMesh(coll_debug, true);
+
 	SelfCollHandler self_coll(self_con);
 	self_coll.addSelfConAsLinearCon(linear_con);
   }
@@ -30,7 +57,8 @@ void MprgpFemSolver::handleCollDetection(){
 }
 
 void MprgpFemSolver::buildVarOffset(){
-  
+
+  _mesh->buildOffset();
   num_var = 0;
   off_var.resize(_mesh->nrB());
   for(size_t i=0;i<_mesh->nrB();i++){
@@ -40,8 +68,10 @@ void MprgpFemSolver::buildVarOffset(){
   }
 }
 
-void MprgpFemSolver::initVelPos(){
-  
+void MprgpFemSolver::initVelPos(const double dt){
+
+  pos0.resize(num_var);
+  vel0.resize(num_var);
   for ( size_t i=0; i<_mesh->nrB(); i++ ){
 
 	FEMSystem& sys = *(_mesh->getB(i)._system);
@@ -64,7 +94,7 @@ void MprgpFemSolver::initVelPos(){
 void MprgpFemSolver::updateMesh(const double dt){
   
   vel1=(vel1-vel0)/(_gamma*dt);
-  for(size_t i=0;i<_mesh->nrB();i++){
+  for(int i=0;i<_mesh->nrB();i++){
 	FEMSystem& sys= *( _mesh->getB(i)._system );
 	sys.setAccel( vel1.block(off_var[i],0,sys.size(),1) );
   }
@@ -80,15 +110,21 @@ void MprgpFemSolver::forward(const double dt){
   vel1 = vel0;
   for ( size_t i = 0; i < _maxIter ; i++ ) {
 
-	buildLinearSystem(LHS, RHS);
-	VectorXd new_pos;
-	MPRGPPlane::solve( LHS, RHS, linear_con, new_pos );
-	if ( updateVelPos (new_pos) < _eps )
+	buildLinearSystem(LHS, RHS, dt);
+	VectorXd new_pos = pos0;
+
+	// _sol.compute(LHS);
+	// new_pos=_sol.solve(RHS);
+
+	const FixedSparseMatrix<double> A(LHS);
+	MPRGPPlane<double>::solve( A, RHS, linear_con, new_pos );
+
+	if ( updateVelPos (new_pos, dt) < _eps )
 	  break;
   }
 }
 
-void MprgpFemSolver::buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS){
+void MprgpFemSolver::buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS, const double dt){
   
   RHS.resize(num_var);
   LHS.resize(num_var,num_var);
@@ -97,18 +133,18 @@ void MprgpFemSolver::buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorX
   HTrips.clear();
   UTrips.clear();
 
-  for ( size_t i = 0; i < _mesh->nrB(); i++ ) {
+  for ( int i = 0; i < _mesh->nrB(); i++ ) {
 
 	//tell system to build: M+(beta*dt*dt)*K+(gamma*dt)*C with off
 	//tell system to build: M(dSn+((1-gamma)*dt)*ddSn-dS_{n+1})+(gamma*dt)*f_I-C*dS_{n+1}
 	FEMSystem& sys=*(_mesh->getB(i)._system);
 
-	const Vec RHSB=Vec::Zero(sys.size());
-	const Vec MRHSB=(vel0-vel1).block(off_var[i],0,sys.size(),1);
-	const Vec KRHSB=Vec::Zero(sys.size());
-	const Vec CRHSB=-vel1.block(off_var[i],0,sys.size(),1)*_gamma*dt;
+	Vec RHSB=Vec::Zero(sys.size());
+	Vec MRHSB=(vel0-vel1).block(off_var[i],0,sys.size(),1);
+	Vec KRHSB=Vec::Zero(sys.size());
+	Vec CRHSB=-vel1.block(off_var[i],0,sys.size(),1)*_gamma*dt;
 
-	sys.buildSystem(1.0f,_beta*dt*dt,_gamma*dt,HTrips,UTrips,
+	sys.buildSystem(1.0,_beta*dt*dt,_gamma*dt,HTrips,UTrips,
 					MRHSB,KRHSB,CRHSB,_gamma*dt,RHSB,off_var[i]);
 
 	RHS.block(off_var[i],0,sys.size(),1)=RHSB;
@@ -122,12 +158,12 @@ void MprgpFemSolver::buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorX
 
 }
 
-double MprgpFemSolver::updateVelPos(const VectorXd &new_pos){
+double MprgpFemSolver::updateVelPos(const VectorXd &new_pos, const double dt){
   
   const VectorXd DELTA = (new_pos-pos1)*(_gamma/(_beta*dt));
   vel1 += DELTA;
   pos1 = new_pos;
-  for(size_t i=0;i<_mesh->nrB();i++){
+  for(int i=0;i<_mesh->nrB();i++){
 
 	FEMSystem& sys=*(_mesh->getB(i)._system);
 	sys.setPos(pos1.block(off_var[i],0,sys.size(),1));

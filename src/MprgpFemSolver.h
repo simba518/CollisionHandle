@@ -2,30 +2,23 @@
 #define _MPRGPFEMSOLVER_H_
 
 #include <FEMSystem.h>
+#include "LinearConCollider.h"
+USE_PRJ_NAMESPACE
 
 class MprgpFemSolver:public FEMSolver{
 	
 public:
-  MprgpFemSolver(){
-	
-	const int dim = 3;
-	boost::shared_ptr<FEMCollision> coll(new SBVHFEMCollision);
-	_mesh.reset(new FEMMesh(dim,coll));
-	resetImplicitEuler();
-	setCollK(1E5f);
-	_mesh->setCellSz(1.0f);
-	setSelfColl(true);
-  }
+  MprgpFemSolver();
   void advance(const double dt);
 
 protected:
   void handleCollDetection();
   void buildVarOffset();
-  void initVelPos();
+  void initVelPos(const double dt);
   void updateMesh(const double dt);
   void forward(const double dt);
-  void buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS);
-  double updateVelPos(const VectorXd &new_pos);
+  void buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS, const double dt);
+  double updateVelPos(const VectorXd &new_pos, const double dt);
 
 private:
   size_t num_var;
