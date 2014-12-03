@@ -13,11 +13,41 @@ typedef vector<VVec4d > VVVec4d;
 
 // self collision constraints: c = n^t*(xi-a*xj-b*xk-c*xl), 
 // where a,b,c is the weight coordinates.
-struct SelfConCache{
+class SelfConCache{
 
+public:
+  SelfConCache(){
+	i = j = k = l = -1;
+	a = b = c = -1.0f;
+	n.setZero();
+	x0.setZero();
+  }
+  void handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV);
+  void convertToLinearCon(VVVec4d &linear_con);
+  void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
+  double computeLambda(const double lambda[4])const;
+
+private:  
   int i,j,k,l;
-  Vector3d n;
+  int pi, pj, pk, pl;
   double a,b,c;
+  Vector3d n, x0;
+};
+
+class GeomConCache{
+  
+public:
+  GeomConCache(){
+	vert_id = plane_id = -1;
+	normal.setZero();
+  }
+  void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
+  void handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n);
+  
+private:
+  int vert_id;
+  int plane_id;
+  Vector3d normal;
 };
 
 /**
@@ -28,11 +58,14 @@ struct SelfConCache{
 class LinearConCollider:public FEMCollider{
   
 public:
-  LinearConCollider(VVVec4d &geom_con, vector<SelfConCache> &self_con, VectorXd &pos0, const size_t num_verts):
-	geom_con(geom_con),self_con(self_con),pos0(pos0){
+  LinearConCollider(VVVec4d &linear_con, vector<SelfConCache> &self_con, 
+					vector<GeomConCache> &geom_con, VectorXd &pos0):
+	linear_con(linear_con),self_con(self_con),geom_con(geom_con), pos0(pos0){
+
+	const size_t num_verts = pos0.size()/3;
 	self_con.clear();
-	geom_con.clear();
-	geom_con.resize(num_verts);
+	linear_con.clear();
+	linear_con.resize(num_verts);
   }
   
   void handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV);
@@ -43,8 +76,9 @@ protected:
   void addConPlane(VVec4d &con_planes, const Vector4d &p)const;
   
 private:
-  VVVec4d &geom_con;
+  VVVec4d &linear_con;
   vector<SelfConCache> &self_con;
+  vector<GeomConCache> &geom_con;
   VectorXd &pos0;
 };
 
@@ -52,12 +86,14 @@ class SelfCollHandler{
   
 public:
   SelfCollHandler(const vector<SelfConCache> &self_con):self_con(self_con){}
-  void addSelfConAsLinearCon(VVVec4d &linear_con){}
-  void addJordanForce(const VectorXd &x, const vector<vector<int> > &face, VectorXd &force){}
+  void addSelfConAsLinearCon(VVVec4d &linear_con);
+  void addJordanForce(const VectorXd &x, const vector<vector<int> > &face, const VVVec4d &linear_con, VectorXd &force);
+
+protected:
+  void computeLambdas(const Vector3d &K_x_f_i, const vector<int> &face_i, const VVec4d &planes, vector<double> &lambdas)const;
 
 private:
   const vector<SelfConCache> &self_con;
-  
 };
 
 #endif /* _LINEARCONCOLLIDER_H_ */

@@ -11,7 +11,7 @@ MprgpFemSolver::MprgpFemSolver():FEMSolver(3){
   resetImplicitEuler();
   setCollK(1E5f);
   _mesh->setCellSz(1.0f);
-  setSelfColl(true);
+  setSelfColl(false);
 }
 
 void MprgpFemSolver::advance(const double dt){
@@ -23,45 +23,14 @@ void MprgpFemSolver::advance(const double dt){
   updateMesh(dt);
 }
 
-void MprgpFemSolver::handleCollDetection(){
-  
-  for ( size_t i=0; i < _mesh->nrB(); i++ )
-	_mesh->getB(i)._system->beforeCollision();
-
-  linear_con.resize(_mesh->nrV());
-
-  
-  static int frame = 0;
-  ostringstream oss3;
-  oss3 << "./tempt/coll_"<< frame++ << ".vtk";
-  DebugFEMCollider coll_debug(oss3.str(),3);
-
-  LinearConCollider coll( linear_con, self_con, pos0, _mesh->nrV() );
-
-  if ( _geom ){
-	_mesh->getColl().collideGeom( *_geom,coll,true );
-	_mesh->getColl().collideGeom( *_geom,coll_debug,true );
-  }
-
-  if ( _selfColl ) {
-
-	_mesh->getColl().collideMesh(coll, true);
-	_mesh->getColl().collideMesh(coll_debug, true);
-
-	SelfCollHandler self_coll(self_con);
-	self_coll.addSelfConAsLinearCon(linear_con);
-  }
-
-  for ( size_t i=0; i < _mesh->nrB(); i++ )
-	_mesh->getB(i)._system->afterCollision();
-}
-
 void MprgpFemSolver::buildVarOffset(){
 
+  assert(_mesh);
   _mesh->buildOffset();
   num_var = 0;
   off_var.resize(_mesh->nrB());
   for(size_t i=0;i<_mesh->nrB();i++){
+	assert(_mesh->getB(i)._system);
 	FEMSystem& sys=*(_mesh->getB(i)._system);
 	off_var[i] = num_var;
 	num_var += sys.size();
@@ -91,14 +60,36 @@ void MprgpFemSolver::initVelPos(const double dt){
   }
 }
 
-void MprgpFemSolver::updateMesh(const double dt){
+void MprgpFemSolver::handleCollDetection(){
   
-  vel1=(vel1-vel0)/(_gamma*dt);
-  for(int i=0;i<_mesh->nrB();i++){
-	FEMSystem& sys= *( _mesh->getB(i)._system );
-	sys.setAccel( vel1.block(off_var[i],0,sys.size(),1) );
+  for ( size_t i=0; i < _mesh->nrB(); i++ )
+	_mesh->getB(i)._system->beforeCollision();
+
+  linear_con.resize(_mesh->nrV());
+  
+  static int frame = 0;
+  ostringstream oss3;
+  oss3 << "./tempt/coll_"<< frame++ << ".vtk";
+  DebugFEMCollider coll_debug(oss3.str(),3);
+
+  LinearConCollider coll( linear_con, self_con, geom_con, pos0);
+
+  if ( _geom ){
+	_mesh->getColl().collideGeom( *_geom,coll,true );
+	_mesh->getColl().collideGeom( *_geom,coll_debug,true );
   }
-  _mesh->updateMesh();
+
+  if ( _selfColl ) {
+
+	_mesh->getColl().collideMesh(coll, true);
+	_mesh->getColl().collideMesh(coll_debug, true);
+
+	SelfCollHandler self_coll(self_con);
+	self_coll.addSelfConAsLinearCon(linear_con);
+  }
+
+  for ( size_t i=0; i < _mesh->nrB(); i++ )
+	_mesh->getB(i)._system->afterCollision();
 }
 
 void MprgpFemSolver::forward(const double dt){
@@ -108,20 +99,31 @@ void MprgpFemSolver::forward(const double dt){
 
   pos1 = pos0;
   vel1 = vel0;
+
+  VectorXd new_pos;
+  PlaneProjector<double> projector(linear_con, pos0);
   for ( size_t i = 0; i < _maxIter ; i++ ) {
 
 	buildLinearSystem(LHS, RHS, dt);
-	VectorXd new_pos = pos0;
-
-	// _sol.compute(LHS);
-	// new_pos=_sol.solve(RHS);
-
 	const FixedSparseMatrix<double> A(LHS);
-	MPRGPPlane<double>::solve( A, RHS, linear_con, new_pos );
-
+	new_pos = pos0;
+	MPRGPPlane<double>::solve( A, RHS, projector, new_pos );
 	if ( updateVelPos (new_pos, dt) < _eps )
 	  break;
   }
+
+  if (_selfColl){
+	
+	SelfCollHandler self_coll(self_con);
+	const VectorXd diff = LHS*new_pos-RHS;
+	self_coll.addJordanForce(diff, projector.getFaceIndex(), linear_con, RHS);
+
+	_sol.compute(LHS);
+	ERROR_LOG_COND("Factorization Fail!", _sol.info() == Eigen::Success);
+	new_pos = _sol.solve(RHS);
+  }
+
+  updateVelPos (new_pos, dt);
 }
 
 void MprgpFemSolver::buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS, const double dt){
@@ -170,4 +172,14 @@ double MprgpFemSolver::updateVelPos(const VectorXd &new_pos, const double dt){
 	sys.setVel(vel1.block(off_var[i],0,sys.size(),1));
   }
   return DELTA.cwiseAbs().maxCoeff();
+}
+
+void MprgpFemSolver::updateMesh(const double dt){
+  
+  vel1=(vel1-vel0)/(_gamma*dt);
+  for(int i=0;i<_mesh->nrB();i++){
+	FEMSystem& sys= *( _mesh->getB(i)._system );
+	sys.setAccel( vel1.block(off_var[i],0,sys.size(),1) );
+  }
+  _mesh->updateMesh();
 }

@@ -27,14 +27,22 @@ void Simulator::init(const string &json_file){
   
   // set material
   {
-	double ak, am;
-	jsonf.read("alpha_k",ak,0.0);
-	jsonf.read("alpha_m",am,0.0);
-
 	fem_solver->getMesh().getB(0)._system.reset(new FEMSystem(fem_solver->getMesh().getB(0)));
 	FEMSystem& sys=*(fem_solver->getMesh().getB(0)._system);
 	sys.clearEnergy();
-	sys.addEnergyMaterial(250000.0f, 0.45f, MaterialEnergy::COROTATIONAL, true);
+	string elastic_mtl_file;
+	if( jsonf.readFilePath("elastic_mtl", elastic_mtl_file) ){
+	  sys.addEnergyMaterial(elastic_mtl_file, MaterialEnergy::COROTATIONAL, true);
+	}else{
+	  sys.addEnergyMaterial(250000.0f, 0.45f, MaterialEnergy::COROTATIONAL, true);
+	}
+
+	double ak = 0.01, am = 0.0;
+	jsonf.read("alpha_k",ak,0.01);
+	jsonf.read("alpha_m",am,0.0);
+	assert_ge(ak,0.0f);
+	assert_ge(am,0.0f);
+	sys.setDamping(ak, am);
 
 	vector<double> gravity;
 	jsonf.read("gravity",gravity);
@@ -42,21 +50,15 @@ void Simulator::init(const string &json_file){
 	sys.addEnergyMass( Vec3(gravity[0], gravity[1], gravity[2]), NULL);
 
 	double coll_k = 1e5;
-	jsonf.read("coll_pen", coll_k);
+	jsonf.read("coll_pen", coll_k, 1e5);
 	assert_gt(coll_k,0.0f);
 	fem_solver->setCollK(coll_k);
   }
 
   // set geom
   {
-  	ObjMesh m;
   	string geom_file;
   	if( jsonf.readFilePath("scene", geom_file) ){
-	  std::ifstream mfile(geom_file);
-	  m.read(mfile);
-	  m.smooth();
-	  m.makeUniform();
-  	  boost::shared_ptr<FEMGeom> geom( new FEMGeom(3) );
 
 	  Mat4 R = Mat4::Identity();
 	  double scene_scale = 1.0f;
@@ -76,10 +78,11 @@ void Simulator::init(const string &json_file){
 	  jsonf.read("coll_dectect_depth", depth, 0.0);
 	  bool revert_scene_norm = false;
 	  jsonf.read("revert_scene_norm", revert_scene_norm, false);
-  	  geom->addGeomMesh( R , m, depth, revert_scene_norm);
+
+	  boost::shared_ptr<FEMGeom> geom( new FEMGeom(3) );
+  	  geom->addGeomMesh( R , geom_file, depth, revert_scene_norm);
   	  geom->assemble();
   	  fem_solver->_geom = geom;
-
   	}
   }
 

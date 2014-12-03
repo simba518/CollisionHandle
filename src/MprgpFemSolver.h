@@ -26,6 +26,7 @@ private:
   VectorXd pos0, pos1, vel0, vel1;
   VVVec4d linear_con;
   vector<SelfConCache> self_con;
+  vector<GeomConCache> geom_con;
   TRIPS HTrips, UTrips;
 };
   
