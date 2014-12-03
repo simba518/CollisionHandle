@@ -8,6 +8,7 @@ class Simulator{
 	
 public:
   Simulator() {fem_solver = boost::shared_ptr<MprgpFemSolver>(new MprgpFemSolver());}
+  boost::shared_ptr<MprgpFemSolver> getFemSolver()const{return fem_solver;}
   void init(const string &json_file);
   void run();
 

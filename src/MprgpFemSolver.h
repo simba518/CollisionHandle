@@ -10,6 +10,9 @@ class MprgpFemSolver:public FEMSolver{
 public:
   MprgpFemSolver();
   void advance(const double dt);
+  void setLinearSolverParameters(double mprgp_tol, int mprgp_it);
+  const vector<size_t> &getVarOffset()const{return off_var;}
+  const VVVec4d &getLinearCon()const{return linear_con;}
 
 protected:
   void handleCollDetection();
@@ -28,6 +31,8 @@ private:
   vector<SelfConCache> self_con;
   vector<GeomConCache> geom_con;
   TRIPS HTrips, UTrips;
+  double mprgp_tol;
+  int mprgp_max_it;
 };
   
 #endif /*_MPRGPFEMSOLVER_H_*/

@@ -12,6 +12,8 @@ MprgpFemSolver::MprgpFemSolver():FEMSolver(3){
   setCollK(1E5f);
   _mesh->setCellSz(1.0f);
   setSelfColl(false);
+  mprgp_max_it = 1000;
+  mprgp_tol = 1e-8;
 }
 
 void MprgpFemSolver::advance(const double dt){
@@ -107,7 +109,8 @@ void MprgpFemSolver::forward(const double dt){
 	buildLinearSystem(LHS, RHS, dt);
 	const FixedSparseMatrix<double> A(LHS);
 	new_pos = pos0;
-	MPRGPPlane<double>::solve( A, RHS, projector, new_pos );
+	const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
+	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl, rlst_code == 0);
 	if ( updateVelPos (new_pos, dt) < _eps )
 	  break;
   }
@@ -121,9 +124,8 @@ void MprgpFemSolver::forward(const double dt){
 	_sol.compute(LHS);
 	ERROR_LOG_COND("Factorization Fail!", _sol.info() == Eigen::Success);
 	new_pos = _sol.solve(RHS);
+	updateVelPos (new_pos, dt);
   }
-
-  updateVelPos (new_pos, dt);
 }
 
 void MprgpFemSolver::buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS, const double dt){
@@ -144,7 +146,7 @@ void MprgpFemSolver::buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorX
 	Vec RHSB=Vec::Zero(sys.size());
 	Vec MRHSB=(vel0-vel1).block(off_var[i],0,sys.size(),1);
 	Vec KRHSB=Vec::Zero(sys.size());
-	Vec CRHSB=-vel1.block(off_var[i],0,sys.size(),1)*_gamma*dt;
+	Vec CRHSB=-vel1.block(off_var[i],0,sys.size(),1)*(_gamma*dt);
 
 	sys.buildSystem(1.0,_beta*dt*dt,_gamma*dt,HTrips,UTrips,
 					MRHSB,KRHSB,CRHSB,_gamma*dt,RHSB,off_var[i]);
@@ -155,7 +157,7 @@ void MprgpFemSolver::buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorX
   LHS.setFromTriplets(HTrips.begin(),HTrips.end());
 
   // using pos as variables instead of delta_velocity
-  LHS *= (_gamma/(_beta*dt));
+  RHS *= ((_beta*dt)/_gamma);
   RHS += (LHS*pos1);
 
 }
@@ -182,4 +184,12 @@ void MprgpFemSolver::updateMesh(const double dt){
 	sys.setAccel( vel1.block(off_var[i],0,sys.size(),1) );
   }
   _mesh->updateMesh();
+}
+
+void MprgpFemSolver::setLinearSolverParameters(double mprgp_tol, int mprgp_it){
+  
+  assert_gt(mprgp_it, 0);
+  assert_gt(mprgp_tol, 0.0);
+  mprgp_max_it = mprgp_it;
+  mprgp_tol = mprgp_tol;
 }

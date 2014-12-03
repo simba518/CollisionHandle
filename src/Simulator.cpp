@@ -86,13 +86,28 @@ void Simulator::init(const string &json_file){
   	}
   }
 
-  // set target directory, time step, as well as number of frames.
+  // set other parameters
   {
 	jsonf.readFilePath("save_to", save_results_to,false);
 	jsonf.read("h",time_step,0.01);
 	assert_gt(time_step, 0.0f);
 	jsonf.read("num_frames", total_frames);
 	assert_gt(total_frames, 1);
+
+	int newton_max_iteration = 10, mprgp_max_iteration = 100;
+	double newton_tolerance = 1e-4, mprgp_tolerance = 1e-4;
+
+	jsonf.read("newton_max_iteration", newton_max_iteration, 10);
+	jsonf.read("mprgp_max_iteration", mprgp_max_iteration, 100);
+	jsonf.read("mprgp_tolerance", mprgp_tolerance, 1e-4);
+	jsonf.read("newton_tolerance", newton_tolerance, 1e-4);
+	
+	fem_solver->resetImplicitEuler(newton_tolerance, newton_max_iteration);
+	fem_solver->setLinearSolverParameters(mprgp_tolerance, mprgp_max_iteration);
+
+	bool enable_self_con = false;
+	jsonf.read("enable_self_con", enable_self_con, false);
+	fem_solver->setSelfColl(enable_self_con);
   }
 }
 

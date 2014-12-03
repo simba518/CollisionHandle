@@ -9,9 +9,15 @@ ADD_EXECUTABLE(${APP_NAME}
 TARGET_LINK_LIBRARIES(${APP_NAME}
 
   /usr/local/lib/libutility_common.a
-  /home/simba/Workspace/ElasticSolver/lib/libelastic_solver.a
-  /home/simba/Workspace/CommonFile/build/libDEC.so
+  ${ELASTIC_SOLVER_LIB}
+  ${COMMON_FILE_LIB}
   ${Boost_LIBRARIES}
   ${LAPACK_LIBRARIES}
   ${SUITESPARSE_LIBRARIES}
   )
+
+
+SET(LIBRARY_NAME fem_collision)
+SET(lib_src ${collision_handle_src})
+LIST(REMOVE_ITEM lib_src ./main.cpp)
+ADD_LIBRARY(${LIBRARY_NAME} ${lib_src})
