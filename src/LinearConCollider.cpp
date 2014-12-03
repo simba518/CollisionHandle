@@ -4,18 +4,11 @@
 #include "LinearConCollider.h"
 USE_PRJ_NAMESPACE
 
-void LinearConCollider::handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV){
+bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,
+						  const Vec3& n, VVVec4d &linear_con, VectorXd &pos0){
 
-  SelfConCache one_con;
-  one_con.handle(b, v, coef, nrV);
-  self_con.push_back(one_con);
-}
-
-void LinearConCollider::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n){
-
-  if (n.norm() < ScalarUtil<double>::scalar_eps){
-	return;
-  }
+  if(n.norm() < ScalarUtil<double>::scalar_eps)
+	return false;
 
   Vector3d N, V;
   N[0] = n[0];
@@ -36,14 +29,60 @@ void LinearConCollider::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FE
   const int vert_id = b->_offset + v->_index;
   assert_in(vert_id, 0, linear_con.size());
   assert_eq_ext(plane, plane, "n:" << n.transpose());
-  addConPlane(linear_con[vert_id], plane);
-  
-  pos0[vert_id*3+0] = x[0];
-  pos0[vert_id*3+1] = x[1];
-  pos0[vert_id*3+2] = x[2];
+  const bool added = addConPlane(linear_con[vert_id], plane);
+
+  if(added){
+
+	pos0[vert_id*3+0] = x[0];
+	pos0[vert_id*3+1] = x[1];
+	pos0[vert_id*3+2] = x[2];
+
+	this->vert_id = vert_id;
+	this->plane_id = linear_con[vert_id].size()-1;
+	normal = plane.segment<3>(0);
+  }
+
+  return added;
 }
 
-void LinearConCollider::addConPlane(VVec4d &planes, const Vector4d &p)const{
+void GeomConCache::addJordanForce(const vector<vector<double> > &all_lambdas, VectorXd &force)const{
+
+  assert_eq(force.size(), all_lambdas.size()*3);
+  assert_in(vert_id, 0, all_lambdas.size());
+  assert_in(plane_id, 0, (int)all_lambdas[vert_id].size()-1);
+
+  const double lambda = all_lambdas[vert_id][plane_id];
+  force.segment<3>(vert_id*3) += normal*lambda;
+}
+
+void GeomConCache::addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &all_lambdas, 
+									  VectorXd &force, double mu_s, double mu_k)const{
+
+  assert_eq(vel.size(), force.size());
+  assert_eq(force.size(), all_lambdas.size()*3);
+  assert_in(vert_id, 0, all_lambdas.size());
+  assert_in(plane_id, 0, (int)all_lambdas[vert_id].size()-1);
+
+  const Vector3d ft = force.segment<3>(vert_id*3) - normal.dot(force.segment<3>(vert_id*3))*normal;
+  const Vector3d vt = vel.segment<3>(vert_id*3) - normal.dot(vel.segment<3>(vert_id*3))*normal;
+  const double lambda = all_lambdas[vert_id][plane_id];
+  assert_ge(lambda, 0.0f);
+  assert_ge(mu_k, 0.0f);
+  assert_ge(mu_s, 0.0f);
+
+  if(vt.norm() > ScalarUtil<double>::scalar_eps ){
+	const Vector3d fr = ( -min( lambda*mu_k, ft.norm() ) )*vt.normalized();
+	force.segment<3>(vert_id*3) += fr;
+  }else if(ft.norm() > ScalarUtil<double>::scalar_eps){
+	const Vector3d fr = ( -min( lambda*mu_s, ft.norm() ) )*ft.normalized();
+	force.segment<3>(vert_id*3) += fr;
+  }
+
+  /// @todo update velocity
+
+}
+
+bool GeomConCache::addConPlane(VVec4d &planes, const Vector4d &p)const{
 
   assert_eq(p,p);
   size_t k = 0;
@@ -51,24 +90,18 @@ void LinearConCollider::addConPlane(VVec4d &planes, const Vector4d &p)const{
 	if ((p-planes[k]).norm() <= 1e-4)
 	  break;
   }
-  if (k == planes.size())
+  if (k == planes.size()){
 	planes.push_back(p);
+	return true;
+  }else{
+	return false;
+  }
 }
 
-void GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n){
-  
-  
-}
-
-void GeomConCache::addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const{
+bool SelfConCache::handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV){
   
   /// @todo
-}
-
-void SelfConCache::handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV){
-  
-  /// @todo
-  
+  return false;
 }
 
 double SelfConCache::computeLambda(const double lambda[4])const{
@@ -96,32 +129,116 @@ void SelfConCache::addJordanForce(const vector<vector<double> > &all_lambdas, Ve
   force.segment<3>(l*3) -= N*c;
 }
 
-void SelfCollHandler::addSelfConAsLinearCon(VVVec4d &linear_con){
+void SelfConCache::addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &all_lambdas, 
+									  VectorXd &force, double mu_s, double mu_k)const{
   
-  for(size_t i = 0; i < self_con.size(); i++)
-	self_con[i].convertToLinearCon(linear_con);
+  /// @todo
 }
 
-void SelfCollHandler::addJordanForce(const VectorXd &K_x_f, const vector<vector<int> > &face, 
-									 const VVVec4d &linear_con, VectorXd &force){
+void LinearConCollider::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n){
 
+  GeomConCache one_con;
+  if( one_con.handle(b, v, n, linear_con, pos0) )
+	geom_con.push_back(one_con);
+}
+
+void LinearConCollider::handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV){
+
+  SelfConCache one_con;
+  if ( one_con.handle(b, v, coef, nrV) ){
+	self_con.push_back(one_con);
+	one_con.convertToLinearCon(linear_con);
+  }
+}
+
+void LinearConCollider::computeAllLambdas(const VectorXd &K_x_f, const vector<vector<int> > &face){
+  
   const int num_verts = face.size();
   assert_eq(K_x_f.size(), num_verts*3);
-  assert_eq(force.size(), num_verts*3);
 
-  vector<vector<double> > all_lambdas(num_verts);
+  all_lambdas.resize(num_verts);
   for(int i = 0; i < num_verts; i++){
 	const Vector3d Kxf_i = K_x_f.segment<3>(i*3);
 	computeLambdas(Kxf_i, face[i], linear_con[i], all_lambdas[i]);
   }
+}
+
+void LinearConCollider::addJordanForce(VectorXd &force)const{
+
+  for(size_t i = 0; i < geom_con.size(); i++)
+	geom_con[i].addJordanForce(all_lambdas, force);
 
   for(size_t i = 0; i < self_con.size(); i++)
 	self_con[i].addJordanForce(all_lambdas, force);
 }
 
-void SelfCollHandler::computeLambdas(const Vector3d &Kxf_i, const vector<int> &face_i, 
-									 const VVec4d &planes, vector<double> &lambdas)const{
+void LinearConCollider::addFrictionalForce(const VectorXd &vel, VectorXd &force)const{
   
-  /// @todo
+  for(size_t i = 0; i < geom_con.size(); i++)
+	geom_con[i].addFrictionalForce(vel, all_lambdas, force, friction_s, friction_k);
+
+  for(size_t i = 0; i < self_con.size(); i++)
+	self_con[i].addFrictionalForce(vel, all_lambdas, force, friction_s, friction_k);
+}
+
+void LinearConCollider::computeLambdas(const Vector3d &Kxf_i, const vector<int> &face_i, 
+									   const VVec4d &planes, vector<double> &lambdas)const{
   
+  lambdas.resize(planes.size());
+  for (size_t i = 0; i < lambdas.size(); ++i){
+    lambdas[i] = 0.0f;
+  }
+
+  if(face_i.size() == 1){
+
+	const int p = face_i[0];
+	assert_in(p, 0, (int)planes.size()-1);
+	lambdas[p] = Kxf_i.dot(planes[p].segment<3>(0));
+	assert_ge(lambdas[p],0.0f);
+
+  }else if(face_i.size() == 2){
+
+	const int p0 = face_i[0];
+	const int p1 = face_i[1];
+	assert_in(p0, 0, (int)planes.size()-1);
+	assert_in(p1, 0, (int)planes.size()-1);
+
+	Matrix<double, 3,2> N;
+	N.block<3,1>(0,0) = planes[p0].segment<3>(0);
+	N.block<3,1>(0,1) = planes[p1].segment<3>(0);
+	
+	const Matrix<double,2,2> A = (N.transpose()*N).inverse();
+	assert_eq_ext(A, A, "N: " << N);
+	const Vector2d la = A*(N.transpose()*Kxf_i);
+	lambdas[p0] = la[0];
+	lambdas[p1] = la[1];
+
+	assert_ge(lambdas[p0],0.0f);
+	assert_ge(lambdas[p1],0.0f);
+
+  }else if(face_i.size() >= 3){
+	
+	const int p0 = face_i[0];
+	const int p1 = face_i[1];
+	const int p2 = face_i[2];
+	assert_in(p0, 0, (int)planes.size()-1);
+	assert_in(p1, 0, (int)planes.size()-1);
+	assert_in(p2, 0, (int)planes.size()-1);
+
+	Matrix<double,3,3> N;
+	N.block<3,1>(0,0) = planes[p0].segment<3>(0);
+	N.block<3,1>(0,1) = planes[p1].segment<3>(0);
+	N.block<3,1>(0,2) = planes[p2].segment<3>(0);
+	
+	const Matrix<double,3,3> A = (N.transpose()*N).inverse();
+	assert_eq_ext(A, A, "N: " << N);
+	const Vector3d la = A*(N.transpose()*Kxf_i);
+	lambdas[p0] = la[0];
+	lambdas[p1] = la[1];
+	lambdas[p2] = la[2];
+
+	assert_ge(lambdas[p0],0.0f);
+	assert_ge(lambdas[p1],0.0f);
+	assert_ge(lambdas[p2],0.0f);
+  }
 }

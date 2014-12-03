@@ -12,7 +12,7 @@ public:
   void advance(const double dt);
   void setLinearSolverParameters(double mprgp_tol, int mprgp_it);
   const vector<size_t> &getVarOffset()const{return off_var;}
-  const VVVec4d &getLinearCon()const{return linear_con;}
+  const VVVec4d &getLinearCon()const{return collider->getLinearCon();}
 
 protected:
   void handleCollDetection();
@@ -24,15 +24,15 @@ protected:
   double updateVelPos(const VectorXd &new_pos, const double dt);
 
 private:
+  boost::shared_ptr<LinearConCollider> collider;
   size_t num_var;
   vector<size_t> off_var;
   VectorXd pos0, pos1, vel0, vel1;
-  VVVec4d linear_con;
-  vector<SelfConCache> self_con;
-  vector<GeomConCache> geom_con;
   TRIPS HTrips, UTrips;
   double mprgp_tol;
   int mprgp_max_it;
+  int newton_inner_max_it;
+  double newton_inner_tol;
 };
   
 #endif /*_MPRGPFEMSOLVER_H_*/

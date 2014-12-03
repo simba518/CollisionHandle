@@ -7,13 +7,17 @@ USE_PRJ_NAMESPACE
 MprgpFemSolver::MprgpFemSolver():FEMSolver(3){
 	
   boost::shared_ptr<FEMCollision> coll(new SBVHFEMCollision);
+  collider = boost::shared_ptr<LinearConCollider>(new LinearConCollider(pos0));
+
   _mesh.reset(new FEMMesh(3,coll));
   resetImplicitEuler();
   setCollK(1E5f);
   _mesh->setCellSz(1.0f);
   setSelfColl(false);
   mprgp_max_it = 1000;
-  mprgp_tol = 1e-8;
+  mprgp_tol = 1e-4;
+  newton_inner_max_it = 1;
+  newton_inner_tol = 1e-4;
 }
 
 void MprgpFemSolver::advance(const double dt){
@@ -31,7 +35,7 @@ void MprgpFemSolver::buildVarOffset(){
   _mesh->buildOffset();
   num_var = 0;
   off_var.resize(_mesh->nrB());
-  for(size_t i=0;i<_mesh->nrB();i++){
+  for(int i=0;i<_mesh->nrB();i++){
 	assert(_mesh->getB(i)._system);
 	FEMSystem& sys=*(_mesh->getB(i)._system);
 	off_var[i] = num_var;
@@ -64,33 +68,28 @@ void MprgpFemSolver::initVelPos(const double dt){
 
 void MprgpFemSolver::handleCollDetection(){
   
-  for ( size_t i=0; i < _mesh->nrB(); i++ )
+  for ( int i = 0; i < _mesh->nrB(); i++ )
 	_mesh->getB(i)._system->beforeCollision();
 
-  linear_con.resize(_mesh->nrV());
-  
   static int frame = 0;
   ostringstream oss3;
   oss3 << "./tempt/coll_"<< frame++ << ".vtk";
   DebugFEMCollider coll_debug(oss3.str(),3);
 
-  LinearConCollider coll( linear_con, self_con, geom_con, pos0);
+  collider->reset();
 
   if ( _geom ){
-	_mesh->getColl().collideGeom( *_geom,coll,true );
+	_mesh->getColl().collideGeom( *_geom,*collider,true );
 	_mesh->getColl().collideGeom( *_geom,coll_debug,true );
   }
 
   if ( _selfColl ) {
 
-	_mesh->getColl().collideMesh(coll, true);
+	_mesh->getColl().collideMesh(*collider, true);
 	_mesh->getColl().collideMesh(coll_debug, true);
-
-	SelfCollHandler self_coll(self_con);
-	self_coll.addSelfConAsLinearCon(linear_con);
   }
 
-  for ( size_t i=0; i < _mesh->nrB(); i++ )
+  for ( int i = 0; i < _mesh->nrB(); i++ )
 	_mesh->getB(i)._system->afterCollision();
 }
 
@@ -103,23 +102,56 @@ void MprgpFemSolver::forward(const double dt){
   vel1 = vel0;
 
   VectorXd new_pos;
-  PlaneProjector<double> projector(linear_con, pos0);
-  for ( size_t i = 0; i < _maxIter ; i++ ) {
+  PlaneProjector<double> projector(getLinearCon(), pos0);
+  VVVec4d empty_con(num_var/3);
+  PlaneProjector<double> projector_no_con(empty_con, pos0);
+  
+  for(int i = 0; i < _maxIter ; i++){
 
-	buildLinearSystem(LHS, RHS, dt);
-	const FixedSparseMatrix<double> A(LHS);
-	new_pos = pos0;
-	const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
-	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl, rlst_code == 0);
-	if ( updateVelPos (new_pos, dt) < _eps )
+	double tol_error = _eps*10.0f;
+	// without frictional and collision forces, with constraints
+	for (int k = 0; k < newton_inner_max_it; k++) {
+
+	  buildLinearSystem(LHS, RHS, dt);
+	  const FixedSparseMatrix<double> A(LHS);
+	  new_pos = pos0;
+	  const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
+	  ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl, rlst_code == 0);
+	  if ( (tol_error = updateVelPos (new_pos, dt) ) < newton_inner_tol )
+		break;
+	}
+
+	// compute frictional and collision forces
+	VectorXd fext = RHS;
+	const VectorXd diff = LHS*new_pos-RHS;
+	collider->computeAllLambdas( diff, projector.getFaceIndex() );
+	collider->addJordanForce(fext);
+	collider->addFrictionalForce(vel1, fext);
+	fext -= RHS;
+
+	// with frictional and collision forces, without constraints
+	for (int k = 0; k < newton_inner_max_it; k++) {
+
+	  buildLinearSystem(LHS, RHS, dt);
+	  RHS += fext;
+	  const FixedSparseMatrix<double> A(LHS);
+	  new_pos = pos0;
+	  const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector_no_con, new_pos, mprgp_tol, mprgp_max_it);
+	  ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl, rlst_code == 0);
+	  if ( (tol_error = updateVelPos (new_pos, dt)) < newton_inner_tol )
+		break;
+	}
+
+	// check tol
+	if ( tol_error < _eps )
 	  break;
   }
 
   if (_selfColl){
 	
-	SelfCollHandler self_coll(self_con);
 	const VectorXd diff = LHS*new_pos-RHS;
-	self_coll.addJordanForce(diff, projector.getFaceIndex(), linear_con, RHS);
+	collider->computeAllLambdas(diff, projector.getFaceIndex());
+	collider->addJordanForce(RHS);
 
 	_sol.compute(LHS);
 	ERROR_LOG_COND("Factorization Fail!", _sol.info() == Eigen::Success);
