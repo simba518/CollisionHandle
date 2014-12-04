@@ -25,7 +25,8 @@ void MprgpFemSolver::advance(const double dt){
   buildVarOffset();
   initVelPos(dt);
   handleCollDetection();
-  forward(dt);
+  // forward(dt);
+  forwardSimple(dt);
   updateMesh(dt);
 }
 
@@ -157,6 +158,29 @@ void MprgpFemSolver::forward(const double dt){
 	ERROR_LOG_COND("Factorization Fail!", _sol.info() == Eigen::Success);
 	new_pos = _sol.solve(RHS);
 	updateVelPos (new_pos, dt);
+  }
+}
+
+void MprgpFemSolver::forwardSimple(const double dt){
+
+  // a simple forward method for test.
+  VectorXd RHS;
+  Eigen::SparseMatrix<double> LHS;
+
+  pos1 = pos0;
+  vel1 = vel0;
+
+  VectorXd new_pos;
+  PlaneProjector<double> projector(getLinearCon(), pos0);
+  for ( size_t i = 0; i < _maxIter ; i++ ) {
+
+	buildLinearSystem(LHS, RHS, dt);
+	const FixedSparseMatrix<double> A(LHS);
+	new_pos = pos0;
+	const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
+	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl, rlst_code == 0);
+	if ( updateVelPos (new_pos, dt) < _eps )
+	  break;
   }
 }
 

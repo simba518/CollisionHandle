@@ -5,6 +5,7 @@
 #include <FEMCollider.h>
 #include <eigen3/Eigen/Dense>
 #include <assertext.h>
+#include <MPRGPSolver.h>
 using namespace Eigen;
 using namespace std;
 USE_PRJ_NAMESPACE
@@ -93,7 +94,9 @@ public:
 
   void handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV);
 
-  void computeAllLambdas(const VectorXd &K_x_f, const vector<vector<int> > &face);
+  void computeAllLambdas(const VectorXd &K_x_f, const vector<vector<int> > &face){
+	MATH::MPRGPPlane<double>::computeLagMultipliers(K_x_f, linear_con, face, all_lambdas);
+  }
 
   void addJordanForce(VectorXd &force)const;
 
@@ -101,9 +104,6 @@ public:
 
   const VVVec4d &getLinearCon()const{return linear_con;}
 
-protected:
-  void computeLambdas(const Vector3d &K_x_f_i, const vector<int> &face_i, const VVec4d &planes, vector<double> &lambdas)const;
-  
 private:
   VVVec4d linear_con;
   vector<SelfConCache> self_con;

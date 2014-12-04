@@ -151,18 +151,6 @@ void LinearConCollider::handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr
   }
 }
 
-void LinearConCollider::computeAllLambdas(const VectorXd &K_x_f, const vector<vector<int> > &face){
-  
-  const int num_verts = face.size();
-  assert_eq(K_x_f.size(), num_verts*3);
-
-  all_lambdas.resize(num_verts);
-  for(int i = 0; i < num_verts; i++){
-	const Vector3d Kxf_i = K_x_f.segment<3>(i*3);
-	computeLambdas(Kxf_i, face[i], linear_con[i], all_lambdas[i]);
-  }
-}
-
 void LinearConCollider::addJordanForce(VectorXd &force)const{
 
   for(size_t i = 0; i < geom_con.size(); i++)
@@ -179,66 +167,4 @@ void LinearConCollider::addFrictionalForce(const VectorXd &vel, VectorXd &force)
 
   for(size_t i = 0; i < self_con.size(); i++)
 	self_con[i].addFrictionalForce(vel, all_lambdas, force, friction_s, friction_k);
-}
-
-void LinearConCollider::computeLambdas(const Vector3d &Kxf_i, const vector<int> &face_i, 
-									   const VVec4d &planes, vector<double> &lambdas)const{
-  
-  lambdas.resize(planes.size());
-  for (size_t i = 0; i < lambdas.size(); ++i){
-    lambdas[i] = 0.0f;
-  }
-
-  if(face_i.size() == 1){
-
-	const int p = face_i[0];
-	assert_in(p, 0, (int)planes.size()-1);
-	lambdas[p] = Kxf_i.dot(planes[p].segment<3>(0));
-	assert_ge(lambdas[p],0.0f);
-
-  }else if(face_i.size() == 2){
-
-	const int p0 = face_i[0];
-	const int p1 = face_i[1];
-	assert_in(p0, 0, (int)planes.size()-1);
-	assert_in(p1, 0, (int)planes.size()-1);
-
-	Matrix<double, 3,2> N;
-	N.block<3,1>(0,0) = planes[p0].segment<3>(0);
-	N.block<3,1>(0,1) = planes[p1].segment<3>(0);
-	
-	const Matrix<double,2,2> A = (N.transpose()*N).inverse();
-	assert_eq_ext(A, A, "N: " << N);
-	const Vector2d la = A*(N.transpose()*Kxf_i);
-	lambdas[p0] = la[0];
-	lambdas[p1] = la[1];
-
-	assert_ge(lambdas[p0],0.0f);
-	assert_ge(lambdas[p1],0.0f);
-
-  }else if(face_i.size() >= 3){
-	
-	const int p0 = face_i[0];
-	const int p1 = face_i[1];
-	const int p2 = face_i[2];
-	assert_in(p0, 0, (int)planes.size()-1);
-	assert_in(p1, 0, (int)planes.size()-1);
-	assert_in(p2, 0, (int)planes.size()-1);
-
-	Matrix<double,3,3> N;
-	N.block<3,1>(0,0) = planes[p0].segment<3>(0);
-	N.block<3,1>(0,1) = planes[p1].segment<3>(0);
-	N.block<3,1>(0,2) = planes[p2].segment<3>(0);
-	
-	const Matrix<double,3,3> A = (N.transpose()*N).inverse();
-	assert_eq_ext(A, A, "N: " << N);
-	const Vector3d la = A*(N.transpose()*Kxf_i);
-	lambdas[p0] = la[0];
-	lambdas[p1] = la[1];
-	lambdas[p2] = la[2];
-
-	assert_ge(lambdas[p0],0.0f);
-	assert_ge(lambdas[p1],0.0f);
-	assert_ge(lambdas[p2],0.0f);
-  }
 }

@@ -20,6 +20,7 @@ protected:
   void initVelPos(const double dt);
   void updateMesh(const double dt);
   void forward(const double dt);
+  void forwardSimple(const double dt);
   void buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS, const double dt);
   double updateVelPos(const VectorXd &new_pos, const double dt);
 
