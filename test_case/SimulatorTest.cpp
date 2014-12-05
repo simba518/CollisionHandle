@@ -42,4 +42,36 @@ BOOST_AUTO_TEST_CASE(test_one_tet){
   
 }
 
+BOOST_AUTO_TEST_CASE(test_coarse_beam_in_ball){
+ 
+  Simulator simulator;
+  simulator.init("./test_case/test_data/beam-coarse/collision_in_ball.ini");
+  simulator.print();
+  simulator.run();
+
+  boost::shared_ptr<const MprgpFemSolver> fem_solver = simulator.getFemSolver();
+
+  double ek, ep;
+  fem_solver->getSystemEnergy(ek, ep);
+
+  ASSERT_EQ_TOL(ek, 3.192594279389013, 1e-10);
+  ASSERT_EQ_TOL(ep, 879.7698309439567, 1e-10);
+
+}
+
+BOOST_AUTO_TEST_CASE(test_coarse_beam_out_ball){
+ 
+  Simulator simulator;
+  simulator.init("./test_case/test_data/beam-coarse/collision_out_ball.ini");
+  simulator.print();
+  simulator.run();
+
+  boost::shared_ptr<const MprgpFemSolver> fem_solver = simulator.getFemSolver();
+  double ek, ep;
+  fem_solver->getSystemEnergy(ek, ep);
+
+  ASSERT_EQ_TOL(ek, 44.56998214487999, 1e-10);
+  ASSERT_EQ_TOL(ep, 69.75710437612339, 1e-10);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
