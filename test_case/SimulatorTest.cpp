@@ -10,6 +10,7 @@ BOOST_AUTO_TEST_CASE(test_one_tet){
   
   Simulator simulator;
   simulator.init("./test_case/test_data/one_tet/collision_ball.ini");
+  simulator.print();
   simulator.run();
 
   boost::shared_ptr<const MprgpFemSolver> fem_solver = simulator.getFemSolver();

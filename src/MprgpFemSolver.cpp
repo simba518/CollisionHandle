@@ -242,10 +242,21 @@ void MprgpFemSolver::updateMesh(const double dt){
   _mesh->updateMesh();
 }
 
-void MprgpFemSolver::setLinearSolverParameters(double mprgp_tol, int mprgp_it){
+void MprgpFemSolver::setLinearSolverParameters(const double mprgp_tol,const int mprgp_it){
   
   assert_gt(mprgp_it, 0);
   assert_gt(mprgp_tol, 0.0);
-  mprgp_max_it = mprgp_it;
-  mprgp_tol = mprgp_tol;
+  this->mprgp_max_it = mprgp_it;
+  this->mprgp_tol = mprgp_tol;
+}
+
+void MprgpFemSolver::print()const{
+
+  INFO_LOG("num variables: "<<num_var);
+  INFO_LOG("newton max outter it: "<<_maxIter);
+  INFO_LOG("newton outter tol: "<<_eps);
+  INFO_LOG("newton max inner it: "<<mprgp_max_it);
+  INFO_LOG("newton inner tol: "<<newton_inner_tol);
+  INFO_LOG("mprgp tol: : "<<mprgp_tol);
+  INFO_LOG("mprgp max it: : "<<mprgp_max_it);
 }

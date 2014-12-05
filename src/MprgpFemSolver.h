@@ -10,9 +10,10 @@ class MprgpFemSolver:public FEMSolver{
 public:
   MprgpFemSolver();
   void advance(const double dt);
-  void setLinearSolverParameters(double mprgp_tol, int mprgp_it);
+  void setLinearSolverParameters(const double mprgp_tol, const int mprgp_it);
   const vector<size_t> &getVarOffset()const{return off_var;}
   const VVVec4d &getLinearCon()const{return collider->getLinearCon();}
+  void print()const;
 
 protected:
   void handleCollDetection();

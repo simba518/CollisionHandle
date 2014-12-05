@@ -21,6 +21,7 @@ public:
   const string &saveResultsTo()const{
 	return save_results_to;
   }
+  void print()const;
   
 private:
   string save_results_to;

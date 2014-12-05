@@ -98,9 +98,9 @@ void Simulator::init(const string &json_file){
 	double newton_tolerance = 1e-4, mprgp_tolerance = 1e-4;
 
 	jsonf.read("newton_max_iteration", newton_max_iteration, 10);
+	jsonf.read("newton_tolerance", newton_tolerance, 1e-4);
 	jsonf.read("mprgp_max_iteration", mprgp_max_iteration, 100);
 	jsonf.read("mprgp_tolerance", mprgp_tolerance, 1e-4);
-	jsonf.read("newton_tolerance", newton_tolerance, 1e-4);
 	
 	fem_solver->resetImplicitEuler(newton_tolerance, newton_max_iteration);
 	fem_solver->setLinearSolverParameters(mprgp_tolerance, mprgp_max_iteration);
@@ -137,4 +137,12 @@ void Simulator::run(){
 
   	fem_solver->advance( timeStep() );
   }
+}
+
+void Simulator::print()const{
+  
+  fem_solver->print();
+  INFO_LOG("time step: "<< timeStep());
+  INFO_LOG("total frames: "<< totalFrames());
+  INFO_LOG("save results to: "<< saveResultsTo());
 }
