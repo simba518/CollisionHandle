@@ -63,10 +63,14 @@ void GeomConCache::addFrictionalForce(const VectorXd &vel, const vector<vector<d
   assert_in(vert_id, 0, all_lambdas.size());
   assert_in(plane_id, 0, (int)all_lambdas[vert_id].size()-1);
 
+  const double lambda = all_lambdas[vert_id][plane_id];
+  if(lambda <= 0){
+	ERROR_LOG_COND(setprecision(10)<<"lambda should be >= 0, lambda = "<<lambda, (lambda>=0) );
+	return;
+  }
+
   const Vector3d ft = force.segment<3>(vert_id*3) - normal.dot(force.segment<3>(vert_id*3))*normal;
   const Vector3d vt = vel.segment<3>(vert_id*3) - normal.dot(vel.segment<3>(vert_id*3))*normal;
-  const double lambda = all_lambdas[vert_id][plane_id];
-  assert_ge(lambda, 0.0f);
   assert_ge(mu_k, 0.0f);
   assert_ge(mu_s, 0.0f);
 
@@ -167,4 +171,10 @@ void LinearConCollider::addFrictionalForce(const VectorXd &vel, VectorXd &force)
 
   for(size_t i = 0; i < self_con.size(); i++)
 	self_con[i].addFrictionalForce(vel, all_lambdas, force, friction_s, friction_k);
+}
+
+void LinearConCollider::print()const{
+  
+  INFO_LOG("static friction: "<< friction_s);
+  INFO_LOG("kinetic friction: "<< friction_k);
 }

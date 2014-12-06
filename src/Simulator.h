@@ -24,6 +24,7 @@ public:
   void print()const;
   
 private:
+  string init_file_name;
   string save_results_to;
   double time_step;
   size_t total_frames;

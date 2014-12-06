@@ -72,22 +72,22 @@ void MprgpFemSolver::handleCollDetection(){
   for ( int i = 0; i < _mesh->nrB(); i++ )
 	_mesh->getB(i)._system->beforeCollision();
 
-  static int frame = 0;
-  ostringstream oss3;
-  oss3 << "./tempt/coll_"<< frame++ << ".vtk";
-  DebugFEMCollider coll_debug(oss3.str(),3);
+  // static int frame = 0;
+  // ostringstream oss3;
+  // oss3 << "./tempt/coll_"<< frame++ << ".vtk";
+  // DebugFEMCollider coll_debug(oss3.str(),3);
 
   collider->reset();
 
   if ( _geom ){
 	_mesh->getColl().collideGeom( *_geom,*collider,true );
-	_mesh->getColl().collideGeom( *_geom,coll_debug,true );
+	// _mesh->getColl().collideGeom( *_geom,coll_debug,true );
   }
 
   if ( _selfColl ) {
 
 	_mesh->getColl().collideMesh(*collider, true);
-	_mesh->getColl().collideMesh(coll_debug, true);
+	// _mesh->getColl().collideMesh(coll_debug, true);
   }
 
   for ( int i = 0; i < _mesh->nrB(); i++ )
@@ -118,6 +118,7 @@ void MprgpFemSolver::forward(const double dt){
 	  new_pos = pos0;
 	  const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
 	  ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl, rlst_code == 0);
+	  DEBUG_FUN( MPRGPPlane<double>::checkResult(LHS, RHS, projector, new_pos, mprgp_tol) );
 	  if ( (tol_error = updateVelPos (new_pos, dt) ) < newton_inner_tol )
 		break;
 	}
@@ -179,6 +180,7 @@ void MprgpFemSolver::forwardSimple(const double dt){
 	new_pos = pos0;
 	const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
 	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl, rlst_code == 0);
+	DEBUG_FUN( MPRGPPlane<double>::checkResult(LHS, RHS, projector, new_pos, mprgp_tol) );
 	if ( updateVelPos (new_pos, dt) < _eps )
 	  break;
   }
@@ -252,11 +254,19 @@ void MprgpFemSolver::setLinearSolverParameters(const double mprgp_tol,const int 
 
 void MprgpFemSolver::print()const{
 
-  INFO_LOG("num variables: "<<num_var);
+  int num_var = 0;
+  for(int i=0;i<_mesh->nrB();i++){
+	assert(_mesh->getB(i)._system);
+	num_var += _mesh->getB(i)._system->size();
+  }
+
+  INFO_LOG("number of nodes: "<<num_var/3);
+  // INFO_LOG("number of tets: "<<); /// @todo
   INFO_LOG("newton max outter it: "<<_maxIter);
   INFO_LOG("newton outter tol: "<<_eps);
-  INFO_LOG("newton max inner it: "<<mprgp_max_it);
+  INFO_LOG("newton max inner it: "<<newton_inner_max_it);
   INFO_LOG("newton inner tol: "<<newton_inner_tol);
-  INFO_LOG("mprgp tol: : "<<mprgp_tol);
   INFO_LOG("mprgp max it: : "<<mprgp_max_it);
+  INFO_LOG("mprgp tol: : "<<mprgp_tol);
+  collider->print();
 }

@@ -11,6 +11,9 @@ public:
   MprgpFemSolver();
   void advance(const double dt);
   void setLinearSolverParameters(const double mprgp_tol, const int mprgp_it);
+  void setFriction(const double mu_s, const double mu_k){
+	collider->setFriction(mu_s, mu_k);
+  }
   const vector<size_t> &getVarOffset()const{return off_var;}
   const VVVec4d &getLinearCon()const{return collider->getLinearCon();}
   void print()const;

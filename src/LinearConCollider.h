@@ -104,6 +104,8 @@ public:
 
   const VVVec4d &getLinearCon()const{return linear_con;}
 
+  void print()const;
+
 private:
   VVVec4d linear_con;
   vector<SelfConCache> self_con;

@@ -13,6 +13,7 @@ using namespace UTILITY;
 void Simulator::init(const string &json_file){
   
   // open init file
+  init_file_name = json_file;
   JsonFilePaser jsonf;
   if ( !jsonf.open(json_file) ){
 	return;
@@ -53,6 +54,11 @@ void Simulator::init(const string &json_file){
 	jsonf.read("coll_pen", coll_k, 1e5);
 	assert_gt(coll_k,0.0f);
 	fem_solver->setCollK(coll_k);
+
+	double mu_s = 0.3, mu_k = 0.3;
+	jsonf.read("static_friction", mu_s, 0.3);
+	jsonf.read("kinetic_friction", mu_k, 0.3);
+	fem_solver->setFriction(mu_s, mu_k);
   }
 
   // set geom
@@ -145,4 +151,5 @@ void Simulator::print()const{
   INFO_LOG("time step: "<< timeStep());
   INFO_LOG("total frames: "<< totalFrames());
   INFO_LOG("save results to: "<< saveResultsTo());
+  INFO_LOG("init file:" << init_file_name)
 }
