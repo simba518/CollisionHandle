@@ -25,8 +25,8 @@ void MprgpFemSolver::advance(const double dt){
   buildVarOffset();
   initVelPos(dt);
   handleCollDetection();
-  // forward(dt);
-  forwardSimple(dt);
+  forward(dt);
+  // forwardSimple(dt);
   updateMesh(dt);
 }
 
