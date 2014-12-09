@@ -9,6 +9,8 @@ class MprgpFemSolver:public FEMSolver{
 	
 public:
   MprgpFemSolver();
+  void setPos(const Vector3d &pos);
+  void setVel(const Vector3d &vel);
   void advance(const double dt);
   void setLinearSolverParameters(const double mprgp_tol, const int mprgp_it);
   void setFriction(const double mu_s, const double mu_k){

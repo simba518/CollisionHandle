@@ -270,3 +270,33 @@ void MprgpFemSolver::print()const{
   INFO_LOG("mprgp tol: : "<<mprgp_tol);
   collider->print();
 }
+
+void MprgpFemSolver::setPos(const Vector3d &pos){
+
+  for ( size_t i=0; i<_mesh->nrB(); i++ ){
+
+	assert( _mesh->getB(i)._system );
+	FEMSystem& sys = *(_mesh->getB(i)._system);
+	VectorXd posB;
+	sys.getPos(posB);
+	for(int j = 0; j < posB.size(); j += 3){
+	  posB.segment<3>(j) += pos;
+	}
+	sys.setPos(posB);
+  }  
+}
+
+void MprgpFemSolver::setVel(const Vector3d &vel){
+
+  for ( size_t i=0; i<_mesh->nrB(); i++ ){
+
+	assert( _mesh->getB(i)._system );
+	FEMSystem& sys = *(_mesh->getB(i)._system);
+	VectorXd velB;
+	sys.getVel(velB);
+	for(int j = 0; j < velB.size(); j += 3){
+	  velB.segment<3>(j) = vel;
+	}
+	sys.setVel(velB);
+  }
+}
