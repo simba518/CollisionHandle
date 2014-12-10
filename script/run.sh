@@ -1,13 +1,15 @@
 #! /bin/bash
 
-# ./bin/release/collision_handle ./data/beam/collision_ball00.ini > tempt/tempt00.txt
+./bin/release/collision_handle ./data/dino/stair.ini  >  tempt/dino_stair.txt
+./bin/release/collision_handle ./data/dino/plane.ini  >  tempt/dino_plane.txt
+./bin/release/collision_handle ./data/dino/cylinder.ini  >  tempt/dino_cylinder.txt
+./bin/release/collision_handle ./data/dino/ball.ini  >  tempt/dino_ball.txt
 
-# ./bin/release/collision_handle ./data/beam/collision_ball001.ini > tempt/tempt001.txt
+./bin/release/collision_handle ./data/dragon_asia/stair.ini  >  tempt/dragon_asia_stair.txt
+./bin/release/collision_handle ./data/dragon_asia/plane.ini  >  tempt/dragon_asia_plane.txt
 
-# ./bin/release/collision_handle ./data/beam/collision_ball008.ini > tempt/tempt008.txt
+./bin/release/collision_handle ./data/beam/ball.ini  >  tempt/beam_ball.txt
 
-# ./bin/release/collision_handle ./data/beam/collision_ball03.ini > tempt/tempt03.txt
-
-./bin/release/collision_handle ./data/beam/collision_ball00h001.ini > tempt/tempt00h001.txt
-
-./bin/release/collision_handle ./data/beam/collision_ball008h001.ini > tempt/tempt03h001.txt
+./bin/release/collision_handle ./data/dragon/stair.ini  >  tempt/dragon_stair.txt
+./bin/release/collision_handle ./data/dragon/bowl.ini  >  tempt/dragon_bowl.txt
+./bin/release/collision_handle ./data/dragon/plane.ini  >  tempt/dragon_plane.txt

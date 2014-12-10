@@ -1,4 +1,5 @@
 #include <boost/filesystem.hpp>
+#include <Eigen/Geometry> 
 #include <JsonFilePaser.h>
 #include <assertext.h>
 #include <FEMGeom.h>
@@ -29,6 +30,11 @@ void Simulator::init(const string &json_file){
 	  assert_ge(abq_file.size(),1);
 	  fem_solver->getMesh().reset(abq_file[0],0.0f);
 	}
+	vector<vector<double> > trans_rot_scale;
+	if(jsonf.read("trans_rot_scale", trans_rot_scale)){
+	  for(size_t i = 0; i < trans_rot_scale.size(); i++)
+		fem_solver->getMesh().applyTrans(transRotScaleToMat(trans_rot_scale[i]),i,true,true);
+	}
   }
   
   // set material
@@ -40,7 +46,7 @@ void Simulator::init(const string &json_file){
 	vector<string> elastic_mtl_file;
 	if( jsonf.readFilePath("elastic_mtl", elastic_mtl_file) ){
 	  assert_ge(elastic_mtl_file.size(),1);
-	  sys.addEnergyMaterial(elastic_mtl_file[0], MaterialEnergy::COROTATIONAL, true);
+	  sys.readEnergy(elastic_mtl_file[0], MaterialEnergy::COROTATIONAL, true);
 	}else{
 	  sys.addEnergyMaterial(250000.0f, 0.45f, MaterialEnergy::COROTATIONAL, true);
 	}
@@ -104,14 +110,14 @@ void Simulator::init(const string &json_file){
 	
 	// plane
 	vector<vector<double> > plane;
-	if( jsonf.read("plane", plane) ){
+	if( jsonf.read("plane_ori_trans_scale", plane) ){
 	  Vector4d p;
 	  Vector3d trans;
 	  for(size_t i = 0; i < plane.size(); i++){
-		assert_eq(plane[i].size(),6);
+		assert_eq(plane[i].size(),7);
 		p << plane[i][0], plane[i][1], plane[i][2], 0;
 		trans << plane[i][3], plane[i][4], plane[i][5];
-		addPlane(geom, p, trans);
+		addPlane(geom, p, trans, plane[i][6]);
 	  }
 	}
 
@@ -144,7 +150,7 @@ void Simulator::init(const string &json_file){
 
 	// cylinder
 	vector<vector<double> > cylinder;
-	if( jsonf.read("cylinder", cylinder) ){
+	if( jsonf.read("cylinder_rad_y_ori_trans", cylinder) ){
 	  Vector4d orient;
 	  Vector3d trans;
 	  for(size_t i = 0; i < cylinder.size(); i++){
@@ -159,7 +165,7 @@ void Simulator::init(const string &json_file){
 
 	// stair
 	vector<double > stair_para;
-	if( jsonf.read("stair", stair_para) ){
+	if( jsonf.read("stair_ext_trans_yd_zd_n", stair_para) ){
 	  assert_eq(stair_para.size(), 9);
 	  Vector3d ext;
 	  Vector3d trans;
@@ -200,15 +206,13 @@ void Simulator::init(const string &json_file){
 	jsonf.read("enable_self_con", enable_self_con, false);
 	fem_solver->setSelfColl(enable_self_con);
 	
-	vector<vector<double> > init_pos_vel;
-	if( jsonf.read("init_pos_vel", init_pos_vel) ){
-	  assert_ge(init_pos_vel.size(), 1);
-	  assert_eq(init_pos_vel[0].size(), 6);
-	  Vector3d pos, vel;
-	  pos << init_pos_vel[0][0], init_pos_vel[0][1], init_pos_vel[0][2];
-	  vel << init_pos_vel[0][3], init_pos_vel[0][4], init_pos_vel[0][5];
-	  fem_solver->setPos(pos);
-	  fem_solver->setPos(vel);
+	vector<vector<double> > init_vel;
+	if( jsonf.read("init_vel", init_vel) ){
+	  assert_ge(init_vel.size(), 1);
+	  assert_eq(init_vel[0].size(), 3);
+	  Vector3d vel;
+	  vel << init_vel[0][0], init_vel[0][1], init_vel[0][2];
+	  fem_solver->setVel(vel);
 	}
   }
 }
@@ -265,10 +269,12 @@ void Simulator::addStair(boost::shared_ptr<FEMGeom> geom, const Vector3d &ext, V
   }
 }
 
-void Simulator::addPlane(boost::shared_ptr<FEMGeom> geom, const Vector4d &plane,const Vector3d &trans)const{
+void Simulator::addPlane(boost::shared_ptr<FEMGeom> geom, const Vector4d &plane,
+						 const Vector3d &trans, const double scale)const{
   
   Vector3d ext;
-  ext << 20,0.1,20;
+  ext << 20,2,20;
+  ext *= scale;
   Matrix4d T = Matrix4d::Identity();
   T.block<3,1>(0,3) = trans;
   geom->addGeomBox(T*orientToTrans(plane), ext);
@@ -297,4 +303,31 @@ Matrix4d Simulator::orientToTrans(const Vector4d &orient)const{
   trans.block<3,1>(0,3)=p0-orient.block<3,1>(0,0).normalized();
   trans.block<3,3>(0,0)=q.toRotationMatrix();
   return trans;
+}
+
+Matrix4d Simulator::transRotScaleToMat(const vector<double> &trans_rot_scale)const{
+
+  assert_eq(trans_rot_scale.size(), 7);
+
+  // scale
+  Matrix4d S = Matrix4d::Identity();
+  S.block<3,3>(0,0) *= trans_rot_scale[6];
+
+  // rotation
+  Matrix4d R = Matrix4d::Identity();
+  const double angle_x = trans_rot_scale[3]*M_PI/180.0;
+  const double angle_y = trans_rot_scale[4]*M_PI/180.0;
+  const double angle_z = trans_rot_scale[5]*M_PI/180.0;
+  Matrix3d m;
+  m = AngleAxisd(angle_x, Vector3d::UnitX())
+	* AngleAxisd(angle_y,  Vector3d::UnitY())
+	* AngleAxisd(angle_z, Vector3d::UnitZ());
+  R.block<3,3>(0,0) = m;
+
+  // translation
+  Matrix4d T = Matrix4d::Identity();
+  T.block<3,1>(0,3) << trans_rot_scale[0], trans_rot_scale[1], trans_rot_scale[2];
+
+  // assemble
+  return (T*R*S);
 }

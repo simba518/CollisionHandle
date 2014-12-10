@@ -24,7 +24,8 @@ public:
   void print()const;
   void addStair(boost::shared_ptr<FEMGeom> geom, const Vector3d &ext, Vector3d trans,
 				const double height_diff, const double depth_diff, const int num)const;
-  void addPlane(boost::shared_ptr<FEMGeom> geom,const Vector4d &plane,const Vector3d &trans)const;
+  void addPlane(boost::shared_ptr<FEMGeom> geom,const Vector4d &plane,
+				const Vector3d &trans, const double scale = 1.0f)const;
   void addCylinder(boost::shared_ptr<FEMGeom> geom, 
 				   const double rad, const double y,
 				   const Vector4d &orient, const Vector3d &trans,
@@ -32,6 +33,7 @@ public:
 
 protected:
   Matrix4d orientToTrans(const Vector4d &orient)const;
+  Matrix4d transRotScaleToMat(const vector<double> &trans_rot_scale)const;
 
 private:
   string init_file_name;
