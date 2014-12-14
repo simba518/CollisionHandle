@@ -186,6 +186,7 @@ void Simulator::init(const string &json_file){
   {
 	DEBUG_LOG("set other parameters");
 	jsonf.readFilePath("save_to", save_results_to,false);
+	fem_solver->setTargetFold(save_results_to);
 	jsonf.read("h",time_step,0.01);
 	assert_gt(time_step, 0.0f);
 	jsonf.read("num_frames", total_frames);

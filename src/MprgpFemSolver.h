@@ -1,6 +1,7 @@
 #ifndef _MPRGPFEMSOLVER_H_
 #define _MPRGPFEMSOLVER_H_
 
+#include <boost/filesystem.hpp>
 #include <FEMSystem.h>
 #include "LinearConCollider.h"
 USE_PRJ_NAMESPACE
@@ -18,6 +19,15 @@ public:
   }
   const vector<size_t> &getVarOffset()const{return off_var;}
   const VVVec4d &getLinearCon()const{return collider->getLinearCon();}
+
+  void setTargetFold(const string &fold_for_saving_results){
+	save_results_to = fold_for_saving_results;
+	boost::filesystem::create_directory(save_results_to);
+	boost::filesystem::create_directory(save_results_to+"/QP/");
+  }
+  const string &saveResultsTo()const{
+	return save_results_to;
+  }
   void print()const;
 
 protected:
@@ -40,6 +50,8 @@ private:
   int mprgp_max_it;
   int newton_inner_max_it;
   double newton_inner_tol;
+  int current_frame;
+  string save_results_to;
 };
   
 #endif /*_MPRGPFEMSOLVER_H_*/

@@ -18,6 +18,9 @@ MprgpFemSolver::MprgpFemSolver():FEMSolver(3){
   mprgp_tol = 1e-4;
   newton_inner_max_it = 1;
   newton_inner_tol = 1e-4;
+
+  current_frame = 0;
+  setTargetFold( "./tempt");
 }
 
 void MprgpFemSolver::advance(const double dt){
@@ -28,6 +31,7 @@ void MprgpFemSolver::advance(const double dt){
   // forward(dt);
   forwardSimple(dt);
   updateMesh(dt);
+  current_frame ++;
 }
 
 void MprgpFemSolver::buildVarOffset(){
@@ -178,9 +182,16 @@ void MprgpFemSolver::forwardSimple(const double dt){
 	buildLinearSystem(LHS, RHS, dt);
 	const FixedSparseMatrix<double> A(LHS);
 	new_pos = pos0;
-	const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
-	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl, rlst_code == 0);
-	DEBUG_FUN( MPRGPPlane<double>::checkResult(LHS, RHS, projector, new_pos, mprgp_tol) );
+
+	DEBUG_FUN({ostringstream ossm_qp;
+		ossm_qp << saveResultsTo() << "/QP/frame_" << current_frame << "_it_"<< i << ".b";
+		writeQP<double>(LHS, RHS, projector.getPlanes(), new_pos, ossm_qp.str());} );
+
+	const int code=MPRGPPlane<double>::solve(A,RHS,projector,new_pos,mprgp_tol,mprgp_max_it);
+
+	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<code<<endl,code==0);
+	DEBUG_FUN( MPRGPPlane<double>::checkResult(LHS, RHS, projector, new_pos, mprgp_tol));
+
 	if ( updateVelPos (new_pos, dt) < _eps )
 	  break;
   }
