@@ -134,16 +134,16 @@ void Simulator::init(const string &json_file){
 	
 	// box
 	vector<vector<double> > box_ctr_ext;
-	if( jsonf.read("box", box_ctr_ext) ){
+	if( jsonf.read("box_ext_trans", box_ctr_ext) ){
 
 	  Vector3d ext;
 	  Matrix4d trans = Matrix4d::Identity();
 	  for(size_t i = 0; i < box_ctr_ext.size(); i++){
 		assert_eq(box_ctr_ext[i].size(),6);
+		ext << box_ctr_ext[i][0], box_ctr_ext[i][1], box_ctr_ext[i][2];
 		trans(0,3) = box_ctr_ext[i][3];
 		trans(1,3) = box_ctr_ext[i][4];
 		trans(2,3) = box_ctr_ext[i][5];
-		ext << box_ctr_ext[i][0], box_ctr_ext[i][1], box_ctr_ext[i][2];
 		geom->addGeomBox(trans, ext);
 	  }
 	}
