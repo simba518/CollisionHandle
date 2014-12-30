@@ -5,7 +5,7 @@ using namespace MATH;
 USE_PRJ_NAMESPACE
 
 MprgpFemSolver::MprgpFemSolver():FEMSolver(3){
-	
+
   boost::shared_ptr<FEMCollision> coll(new SBVHFEMCollision);
   collider = boost::shared_ptr<LinearConCollider>(new LinearConCollider(pos0));
 
@@ -21,15 +21,20 @@ MprgpFemSolver::MprgpFemSolver():FEMSolver(3){
 
   current_frame = 0;
   setTargetFold( "./tempt");
+  use_simple_sim = false;
 }
 
 void MprgpFemSolver::advance(const double dt){
-	
+
+  FUNC_TIMER();
   buildVarOffset();
   initVelPos(dt);
   handleCollDetection();
-  // forward(dt);
-  forwardSimple(dt);
+  if(use_simple_sim){
+	forwardSimple(dt);
+  }else{
+	forward(dt);
+  }
   updateMesh(dt);
   current_frame ++;
 }
@@ -52,7 +57,7 @@ void MprgpFemSolver::initVelPos(const double dt){
 
   pos0.resize(num_var);
   vel0.resize(num_var);
-  for ( size_t i=0; i<_mesh->nrB(); i++ ){
+  for ( int i=0; i<_mesh->nrB(); i++ ){
 
 	FEMSystem& sys = *(_mesh->getB(i)._system);
 	Vec posB,velB,accelB,XB;
@@ -75,23 +80,20 @@ void MprgpFemSolver::handleCollDetection(){
   
   for ( int i = 0; i < _mesh->nrB(); i++ )
 	_mesh->getB(i)._system->beforeCollision();
-
-  // static int frame = 0;
-  // ostringstream oss3;
-  // oss3 << "./tempt/coll_"<< frame++ << ".vtk";
-  // DebugFEMCollider coll_debug(oss3.str(),3);
-
   collider->reset();
+
+  ostringstream oss3;
+  oss3 << saveResultsTo()+"/collisions/coll_"<< currentFrame() << ".vtk";
+  DebugFEMCollider coll_debug( oss3.str(), 3 );
 
   if ( _geom ){
 	_mesh->getColl().collideGeom( *_geom,*collider,true );
-	// _mesh->getColl().collideGeom( *_geom,coll_debug,true );
+	DEBUG_FUN( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
   }
 
   if ( _selfColl ) {
-
 	_mesh->getColl().collideMesh(*collider, true);
-	// _mesh->getColl().collideMesh(coll_debug, true);
+	DEBUG_FUN( _mesh->getColl().collideMesh(coll_debug, true) );
   }
 
   for ( int i = 0; i < _mesh->nrB(); i++ )
@@ -113,56 +115,37 @@ void MprgpFemSolver::forward(const double dt){
   
   for(int i = 0; i < _maxIter ; i++){
 
-	double tol_error = _eps*10.0f;
-	// without frictional and collision forces, with constraints
-	for (int k = 0; k < newton_inner_max_it; k++) {
+	// build linear system
+	buildLinearSystem(LHS, RHS, dt);
+	const FixedSparseMatrix<double> A(LHS);
 
-	  buildLinearSystem(LHS, RHS, dt);
-	  const FixedSparseMatrix<double> A(LHS);
+	// use constraints, no frictional and collision forces.
+	{
 	  new_pos = pos0;
 	  const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
 	  ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl, rlst_code == 0);
 	  DEBUG_FUN( MPRGPPlane<double>::checkResult(LHS, RHS, projector, new_pos, mprgp_tol) );
-	  if ( (tol_error = updateVelPos (new_pos, dt) ) < newton_inner_tol )
-		break;
 	}
 
 	// compute frictional and collision forces
-	VectorXd fext = RHS;
-	const VectorXd diff = LHS*new_pos-RHS;
-	collider->computeAllLambdas( diff, projector.getFaceIndex() );
-	collider->addJordanForce(fext);
-	collider->addFrictionalForce(vel1, fext);
-	fext -= RHS;
-
-	// with frictional and collision forces, without constraints
-	for (int k = 0; k < newton_inner_max_it; k++) {
-
-	  buildLinearSystem(LHS, RHS, dt);
-	  RHS += fext;
-	  const FixedSparseMatrix<double> A(LHS);
-	  new_pos = pos0;
-	  const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector_no_con, new_pos, mprgp_tol, mprgp_max_it);
-	  ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl, rlst_code == 0);
-	  if ( (tol_error = updateVelPos (new_pos, dt)) < newton_inner_tol )
-		break;
+	{
+	  const VectorXd diff = LHS*new_pos-RHS;
+	  collider->computeAllLambdas( diff, projector.getFaceIndex() );
+	  collider->addJordanForce(RHS);
+	  collider->addFrictionalForce(vel1, RHS); ///@todo no friction.
 	}
 
-	// check tol
-	if ( tol_error < _eps )
+	// use frictional and collision forces, and no constraints.
+	{
+	  const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector_no_con, new_pos, mprgp_tol, mprgp_max_it);
+	  ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl, rlst_code == 0);
+	}
+
+	// check tolerance
+	if ( updateVelPos (new_pos, dt) < _eps ){
 	  break;
-  }
+	}
 
-  if (_selfColl){
-	
-	const VectorXd diff = LHS*new_pos-RHS;
-	collider->computeAllLambdas(diff, projector.getFaceIndex());
-	collider->addJordanForce(RHS);
-
-	_sol.compute(LHS);
-	ERROR_LOG_COND("Factorization Fail!", _sol.info() == Eigen::Success);
-	new_pos = _sol.solve(RHS);
-	updateVelPos (new_pos, dt);
   }
 }
 
@@ -177,14 +160,14 @@ void MprgpFemSolver::forwardSimple(const double dt){
 
   VectorXd new_pos;
   PlaneProjector<double> projector(getLinearCon(), pos0);
-  for ( size_t i = 0; i < _maxIter ; i++ ) {
+  for ( int i = 0; i < _maxIter ; i++ ) {
 
 	buildLinearSystem(LHS, RHS, dt);
 	const FixedSparseMatrix<double> A(LHS);
 	new_pos = pos0;
 
 	DEBUG_FUN({ostringstream ossm_qp;
-		ossm_qp << saveResultsTo() << "/QP/frame_" << current_frame << "_it_"<< i << ".b";
+		ossm_qp << saveResultsTo() << "/QP/frame_" << currentFrame() << "_it_"<< i << ".b";
 		writeQP<double>(LHS, RHS, projector.getPlanes(), new_pos, ossm_qp.str());} );
 
 	const int code=MPRGPPlane<double>::solve(A,RHS,projector,new_pos,mprgp_tol,mprgp_max_it);
@@ -277,37 +260,22 @@ void MprgpFemSolver::print()const{
   INFO_LOG("newton outter tol: "<<_eps);
   INFO_LOG("newton max inner it: "<<newton_inner_max_it);
   INFO_LOG("newton inner tol: "<<newton_inner_tol);
-  INFO_LOG("mprgp max it: : "<<mprgp_max_it);
-  INFO_LOG("mprgp tol: : "<<mprgp_tol);
+  INFO_LOG("mprgp max it: "<<mprgp_max_it);
+  INFO_LOG("mprgp tol: "<<mprgp_tol);
+  INFO_LOG("use simple simulation: "<< (use_simple_sim ? "true":"false"));
   collider->print();
 }
 
-void MprgpFemSolver::setPos(const Vector3d &pos){
+void MprgpFemSolver::setVel(const Vector3d &vel, const int body_id){
 
-  for ( size_t i=0; i<_mesh->nrB(); i++ ){
+  assert_in(body_id, 0, _mesh->nrB()-1);
+  assert( _mesh->getB(body_id)._system );
 
-	assert( _mesh->getB(i)._system );
-	FEMSystem& sys = *(_mesh->getB(i)._system);
-	VectorXd posB;
-	sys.getPos(posB);
-	for(int j = 0; j < posB.size(); j += 3){
-	  posB.segment<3>(j) += pos;
-	}
-	sys.setPos(posB);
-  }  
-}
-
-void MprgpFemSolver::setVel(const Vector3d &vel){
-
-  for ( size_t i=0; i<_mesh->nrB(); i++ ){
-
-	assert( _mesh->getB(i)._system );
-	FEMSystem& sys = *(_mesh->getB(i)._system);
-	VectorXd velB;
-	sys.getVel(velB);
-	for(int j = 0; j < velB.size(); j += 3){
-	  velB.segment<3>(j) = vel;
-	}
-	sys.setVel(velB);
+  FEMSystem& sys = *(_mesh->getB(body_id)._system);
+  VectorXd velB;
+  sys.getVel(velB);
+  for(int j = 0; j < velB.size(); j += 3){
+	velB.segment<3>(j) = vel;
   }
+  sys.setVel(velB);
 }

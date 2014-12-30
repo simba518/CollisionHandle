@@ -12,6 +12,8 @@ USE_PRJ_NAMESPACE
 
 typedef vector<Vector4d,Eigen::aligned_allocator<Vector4d> > VVec4d;
 typedef vector<VVec4d > VVVec4d;
+typedef Matrix<double,15,1> Vector15d;
+typedef Matrix<double,16,1> Vector16d;
 
 class GeomConCache{
   
@@ -25,8 +27,7 @@ public:
   void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
   void addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, VectorXd &force, double mu_s, double mu_k)const;
   
-protected:
-  bool addConPlane(VVec4d &con_planes, const Vector4d &p)const;
+  static bool addConPlane(VVec4d &con_planes, const Vector4d &p);
   
 private:
   int vert_id;
@@ -34,30 +35,29 @@ private:
   Vector3d normal;
 };
 
-// self collision constraints: c = n^t*(xi-a*xj-b*xk-c*xl), 
+// self collision constraints: c = n^t*(xi-a*xj-b*xk-c*xl),
 // where a,b,c is the weight coordinates.
 class SelfConCache{
 
 public:
-  SelfConCache(){
-	i = j = k = l = -1;
-	a = b = c = -1.0f;
-	n.setZero();
-	x0.setZero();
-  }
-  bool handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV);
+  bool handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,boost::shared_ptr<FEMBody> bv,
+			  boost::shared_ptr<FEMVertex> v,const Vec4& bary, VVVec4d &linear_con);
   void convertToLinearCon(VVVec4d &linear_con);
   void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
   void addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, VectorXd &force, double mu_s, double mu_k)const;
 
 protected:
-  double computeLambda(const double lambda[4])const;
+  double computeLambda(const double lambda[5])const;
+  void findFeasiblePoints(Vector15d &x)const;
+  double fun(const Vector15d &x)const;
+  void grad(const Vector15d &x, Vector15d &g)const;
 
 private:  
-  int i,j,k,l;
-  int pi, pj, pk, pl;
-  double a,b,c;
-  Vector3d n, x0;
+  Vector15d initial_x;
+  int v[5];
+  double d[4];
+  int plane_id[5];
+  Vector3d n[5];
 };
 
 /**
@@ -90,9 +90,11 @@ public:
 	friction_k = mu_k;
   }
 
+  void handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV) {}
+
   void handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n);
 
-  void handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV);
+  void handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,boost::shared_ptr<FEMBody> bv,boost::shared_ptr<FEMVertex> v,const Vec4& bary);
 
   void computeAllLambdas(const VectorXd &K_x_f, const vector<vector<int> > &face){
 	MATH::MPRGPPlane<double>::computeLagMultipliers(K_x_f, linear_con, face, all_lambdas);

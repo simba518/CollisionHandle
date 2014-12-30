@@ -2,6 +2,7 @@
 #include <assertext.h>
 #include <FEMMesh.h>
 #include "LinearConCollider.h"
+#include "TetrahedronVertexCon.h"
 USE_PRJ_NAMESPACE
 
 bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,
@@ -26,8 +27,8 @@ bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVert
   const Vector3d x = V+N*(1.0+ScalarUtil<double>::scalar_eps);
   plane[3] = -(plane.segment<3>(0).dot(x));
 
-  const int vert_id = b->_offset + v->_index;
-  assert_in(vert_id, 0, linear_con.size());
+  const int vert_id = b->_offset/3 + v->_index;
+  assert_in(vert_id, 0, (int)linear_con.size());
   assert_eq_ext(plane, plane, "n:" << n.transpose());
   const bool added = addConPlane(linear_con[vert_id], plane);
 
@@ -47,7 +48,7 @@ bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVert
 
 void GeomConCache::addJordanForce(const vector<vector<double> > &all_lambdas, VectorXd &force)const{
 
-  assert_eq(force.size(), all_lambdas.size()*3);
+  assert_eq(force.size(), (int)all_lambdas.size()*3);
   assert_in(vert_id, 0, all_lambdas.size());
   assert_in(plane_id, 0, (int)all_lambdas[vert_id].size()-1);
 
@@ -59,8 +60,8 @@ void GeomConCache::addFrictionalForce(const VectorXd &vel, const vector<vector<d
 									  VectorXd &force, double mu_s, double mu_k)const{
 
   assert_eq(vel.size(), force.size());
-  assert_eq(force.size(), all_lambdas.size()*3);
-  assert_in(vert_id, 0, all_lambdas.size());
+  assert_eq(force.size(), (int)all_lambdas.size()*3);
+  assert_in(vert_id, 0, (int)all_lambdas.size());
   assert_in(plane_id, 0, (int)all_lambdas[vert_id].size()-1);
 
   const double lambda = all_lambdas[vert_id][plane_id];
@@ -86,7 +87,7 @@ void GeomConCache::addFrictionalForce(const VectorXd &vel, const vector<vector<d
 
 }
 
-bool GeomConCache::addConPlane(VVec4d &planes, const Vector4d &p)const{
+bool GeomConCache::addConPlane(VVec4d &planes, const Vector4d &p){
 
   assert_eq(p,p);
   size_t k = 0;
@@ -102,35 +103,98 @@ bool GeomConCache::addConPlane(VVec4d &planes, const Vector4d &p)const{
   }
 }
 
-bool SelfConCache::handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV){
+bool SelfConCache::handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,boost::shared_ptr<FEMBody> bv,
+						  boost::shared_ptr<FEMVertex> v,const Vec4& bary, VVVec4d &linear_con){
   
-  /// @todo
-  return false;
+  // compute v[i], d[i]
+  this->v[0] = bv->_offset + v->_index;
+  initial_x.segment<3>(0) = v->_pos;
+  for (int i = 0; i < 4; ++i){
+	this->v[i+1] = bv->_offset + c->_v[i]->_index;
+	d[i] = bv->_offset + c->_v[i]->_matDist;
+	initial_x.segment<3>(i*3+3) = c->_v[i]->_pos;
+  }
+  
+  // convert to linear constraints
+  const size_t old_size = linear_con.size();
+  convertToLinearCon(linear_con);
+  return old_size < linear_con.size();
 }
 
-double SelfConCache::computeLambda(const double lambda[4])const{
+double SelfConCache::fun(const Vector15d &x)const{
+  return TetrahedronVertexCon::functionValue(d, &x[0]);
+}
+
+void SelfConCache::grad(const Vector15d &x, Vector15d &g)const{
+  TetrahedronVertexCon::gradient(d, &x[0], &g[0]);
+}
+
+void SelfConCache::findFeasiblePoints(Vector15d &x)const{
   
-  /// @todo 
-  return 0;  
+  Matrix<double, 16, 16> A;
+  for (int i = 0; i < 15; ++i){
+    A(i,i) = 1;
+  }
+  A(15,15) = 0;
+
+  Vector16d x_old, x_new, b;
+  x_old.head<15>() = initial_x;
+  b.head<15>() = initial_x;
+
+  Vector15d J;
+  const double tol = 1e-3;
+  const int max_it = 100;
+  for (int i = 0; i < max_it; ++i){
+	grad(x_old.head<15>(), J);
+	A.block<15,1>(1,0) = J;
+	A.block<1,15>(0,1) = J.transpose();
+	b[15] = J.dot(x_old.head<15>()) - fun(x_old.head<15>());
+	x_new = A.lu().solve(b);
+	const double err = (x_new-x_old).norm();
+	if(err <= tol)
+	  break;
+	x_old = x_new;
+  }
+  x = x_new.head<15>();
 }
 
 void SelfConCache::convertToLinearCon(VVVec4d &linear_con){
-  
-  /// @todo
+
+  Vector15d x, g;
+  findFeasiblePoints(x);
+  const double f = fun(x);
+  grad(x,g);
+  Vector4d plane;
+  for (int i = 0; i < 5; ++i){
+	n[i] = g.segment<3>(i*3);
+	const double norm = n[i].norm();
+	assert_gt(norm, 0);
+	const double pi = (f-n[i].dot(x.segment<3>(i*3)))/norm;
+	n[i] = n[i]/norm;
+	plane.segment<3>(0) = n[i];
+	plane[3] = pi;
+	if( GeomConCache::addConPlane(linear_con[v[i]], plane) ){
+	  plane_id[i] = linear_con[v[i]].size()-1;
+	}
+  }
+}
+
+double SelfConCache::computeLambda(const double lambda[5])const{
+
+  return (lambda[0]+lambda[1]+lambda[2]+lambda[3]+lambda[4])/5.0f;
 }
 
 void SelfConCache::addJordanForce(const vector<vector<double> > &all_lambdas, VectorXd &force)const{
 
-  double lambda[4];
-  lambda[0] = all_lambdas[i][pi];
-  lambda[1] = all_lambdas[i][pj];
-  lambda[2] = all_lambdas[i][pk];
-  lambda[3] = all_lambdas[i][pl];
-  const Vector3d N = computeLambda(lambda)*n;
-  force.segment<3>(i*3) += N;
-  force.segment<3>(j*3) -= N*a;
-  force.segment<3>(k*3) -= N*b;
-  force.segment<3>(l*3) -= N*c;
+  double lambda[5];
+  for (int i = 0; i < 5; ++i){
+	lambda[i] = all_lambdas[v[0]][plane_id[i]];
+  }
+  const double la = computeLambda(lambda);
+  assert_le(la, 0.0f);
+  for (int i = 0; i < 5; ++i){
+	force.segment<3>(v[i]*3) += la*n[i];
+  }
 }
 
 void SelfConCache::addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &all_lambdas, 
@@ -146,12 +210,12 @@ void LinearConCollider::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FE
 	geom_con.push_back(one_con);
 }
 
-void LinearConCollider::handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV){
+void LinearConCollider::handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,
+							   boost::shared_ptr<FEMBody> bv,boost::shared_ptr<FEMVertex> v,const Vec4& bary){
 
   SelfConCache one_con;
-  if ( one_con.handle(b, v, coef, nrV) ){
+  if ( one_con.handle(bc, c, bv, v, bary, linear_con) ){
 	self_con.push_back(one_con);
-	one_con.convertToLinearCon(linear_con);
   }
 }
 

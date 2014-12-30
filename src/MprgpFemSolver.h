@@ -10,8 +10,10 @@ class MprgpFemSolver:public FEMSolver{
 	
 public:
   MprgpFemSolver();
-  void setPos(const Vector3d &pos);
-  void setVel(const Vector3d &vel);
+  void useSimpleSimulation(const bool use){
+	this->use_simple_sim = use;
+  }
+  void setVel(const Vector3d &vel, const int body_id);
   void advance(const double dt);
   void setLinearSolverParameters(const double mprgp_tol, const int mprgp_it);
   void setFriction(const double mu_s, const double mu_k){
@@ -19,11 +21,15 @@ public:
   }
   const vector<size_t> &getVarOffset()const{return off_var;}
   const VVVec4d &getLinearCon()const{return collider->getLinearCon();}
+  int currentFrame()const{
+	return current_frame;
+  }
 
   void setTargetFold(const string &fold_for_saving_results){
 	save_results_to = fold_for_saving_results;
 	boost::filesystem::create_directory(save_results_to);
 	boost::filesystem::create_directory(save_results_to+"/QP/");
+	boost::filesystem::create_directory(save_results_to+"/collisions/");
   }
   const string &saveResultsTo()const{
 	return save_results_to;
@@ -52,6 +58,7 @@ private:
   double newton_inner_tol;
   int current_frame;
   string save_results_to;
+  bool use_simple_sim;
 };
   
 #endif /*_MPRGPFEMSOLVER_H_*/

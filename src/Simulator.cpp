@@ -27,8 +27,11 @@ void Simulator::init(const string &json_file){
 	DEBUG_LOG("load mesh");
 	vector<string> abq_file;
 	if( jsonf.readFilePath("vol_file", abq_file) ){
-	  assert_ge(abq_file.size(),1);
-	  fem_solver->getMesh().reset(abq_file[0],0.0f);
+	  FEMMesh tempt_mesh( fem_solver->getMesh() );
+	  for (size_t i = 0; i < abq_file.size(); ++i){
+		tempt_mesh.reset(abq_file[i], 0.0f);
+		fem_solver->getMesh() += tempt_mesh;
+	  }
 	}
 	vector<vector<double> > trans_rot_scale;
 	if(jsonf.read("trans_rot_scale", trans_rot_scale)){
@@ -40,15 +43,17 @@ void Simulator::init(const string &json_file){
   // set material
   {
 	DEBUG_LOG("set material");
-	fem_solver->getMesh().getB(0)._system.reset(new FEMSystem(fem_solver->getMesh().getB(0)));
-	FEMSystem& sys=*(fem_solver->getMesh().getB(0)._system);
-	sys.clearEnergy();
 	vector<string> elastic_mtl_file;
-	if( jsonf.readFilePath("elastic_mtl", elastic_mtl_file) ){
-	  assert_ge(elastic_mtl_file.size(),1);
-	  sys.readEnergy(elastic_mtl_file[0], MaterialEnergy::COROTATIONAL, true);
-	}else{
-	  sys.addEnergyMaterial(250000.0f, 0.45f, MaterialEnergy::COROTATIONAL, true);
+	jsonf.readFilePath("elastic_mtl", elastic_mtl_file);
+	for (int i = 0; i < fem_solver->getMesh().nrB(); ++i){
+	  fem_solver->getMesh().getB(i)._system.reset(new FEMSystem(fem_solver->getMesh().getB(i)));
+	  FEMSystem& sys=*(fem_solver->getMesh().getB(i)._system);
+	  sys.clearEnergy();
+	  if((int)elastic_mtl_file.size() > i){
+		sys.readEnergy(elastic_mtl_file[i], MaterialEnergy::COROTATIONAL, true);
+	  }else{
+		sys.addEnergyMaterial(250000.0f, 0.45f, MaterialEnergy::COROTATIONAL, true);
+	  }
 	}
 
 	double ak = 0.01, am = 0.0;
@@ -56,12 +61,18 @@ void Simulator::init(const string &json_file){
 	jsonf.read("alpha_m",am,0.0);
 	assert_ge(ak,0.0f);
 	assert_ge(am,0.0f);
-	sys.setDamping(ak, am);
+	for (int i = 0; i < fem_solver->getMesh().nrB(); ++i){
+	  FEMSystem& sys=*(fem_solver->getMesh().getB(i)._system);
+	  sys.setDamping(ak, am);
+	}
 
 	vector<double> gravity;
 	jsonf.read("gravity",gravity);
 	assert_eq(gravity.size(),3);
-	sys.addEnergyMass( Vec3(gravity[0], gravity[1], gravity[2]), NULL);
+	for (int i = 0; i < fem_solver->getMesh().nrB(); ++i){
+	  FEMSystem& sys=*(fem_solver->getMesh().getB(i)._system);
+	  sys.addEnergyMass( Vec3(gravity[0], gravity[1], gravity[2]), NULL);
+	}
 
 	double coll_k = 1e5;
 	jsonf.read("coll_pen", coll_k, 1e5);
@@ -206,14 +217,19 @@ void Simulator::init(const string &json_file){
 	bool enable_self_con = false;
 	jsonf.read("enable_self_con", enable_self_con, false);
 	fem_solver->setSelfColl(enable_self_con);
+
+	bool use_simple_sim = false;
+	jsonf.read("use_simple_sim", use_simple_sim, false);
+	fem_solver->useSimpleSimulation(use_simple_sim);
 	
 	vector<vector<double> > init_vel;
 	if( jsonf.read("init_vel", init_vel) ){
-	  assert_ge(init_vel.size(), 1);
-	  assert_eq(init_vel[0].size(), 3);
 	  Vector3d vel;
-	  vel << init_vel[0][0], init_vel[0][1], init_vel[0][2];
-	  fem_solver->setVel(vel);
+	  for (int i = 0; i < fem_solver->getMesh().nrB() && i < (int)init_vel.size(); ++i){
+		assert_eq(init_vel[i].size(), 3);
+		vel << init_vel[i][0], init_vel[i][1], init_vel[i][2];
+		fem_solver->setVel(vel, i);
+	  }
 	}
   }
 }
