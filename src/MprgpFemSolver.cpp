@@ -6,6 +6,7 @@ USE_PRJ_NAMESPACE
 
 MprgpFemSolver::MprgpFemSolver():FEMSolver(3){
 
+  // boost::shared_ptr<FEMCollision> coll(new BVHFEMCollision);
   boost::shared_ptr<FEMCollision> coll(new SBVHFEMCollision);
   collider = boost::shared_ptr<LinearConCollider>(new LinearConCollider(pos0));
 
@@ -77,7 +78,7 @@ void MprgpFemSolver::initVelPos(const double dt){
 }
 
 void MprgpFemSolver::handleCollDetection(){
-  
+
   for ( int i = 0; i < _mesh->nrB(); i++ )
 	_mesh->getB(i)._system->beforeCollision();
   collider->reset();
@@ -87,13 +88,13 @@ void MprgpFemSolver::handleCollDetection(){
   DebugFEMCollider coll_debug( oss3.str(), 3 );
 
   if ( _geom ){
-	_mesh->getColl().collideGeom( *_geom,*collider,true );
 	DEBUG_FUN( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
+	_mesh->getColl().collideGeom( *_geom,*collider,true );
   }
 
   if ( _selfColl ) {
-	_mesh->getColl().collideMesh(*collider, true);
 	DEBUG_FUN( _mesh->getColl().collideMesh(coll_debug, true) );
+	_mesh->getColl().collideMesh(*collider, true);
   }
 
   for ( int i = 0; i < _mesh->nrB(); i++ )
@@ -108,11 +109,14 @@ void MprgpFemSolver::forward(const double dt){
   pos1 = pos0;
   vel1 = vel0;
 
-  VectorXd new_pos;
-  PlaneProjector<double> projector(getLinearCon(), pos0);
+  VectorXd feasible_x = pos0;
+  const bool find_feasible = MATH::findFeasible(getLinearCon(), feasible_x);
+  assert(find_feasible);
+  PlaneProjector<double> projector(getLinearCon(), feasible_x);
   VVVec4d empty_con(num_var/3);
-  PlaneProjector<double> projector_no_con(empty_con, pos0);
-  
+  PlaneProjector<double> projector_no_con(empty_con, feasible_x);
+
+  VectorXd new_pos;  
   for(int i = 0; i < _maxIter ; i++){
 
 	// build linear system
@@ -121,8 +125,12 @@ void MprgpFemSolver::forward(const double dt){
 
 	// use constraints, no frictional and collision forces.
 	{
-	  new_pos = pos0;
-	  const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
+	  new_pos = feasible_x;
+
+	  typedef DiagonalPlanePreconSolver<double,FixedSparseMatrix<double>, true > NoPreconditioner;
+	  const int rlst_code = MPRGPPlane<double>::solve<FixedSparseMatrix<double>, NoPreconditioner>
+		( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
+
 	  ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl, rlst_code == 0);
 	  DEBUG_FUN( MPRGPPlane<double>::checkResult(LHS, RHS, projector, new_pos, mprgp_tol) );
 	}

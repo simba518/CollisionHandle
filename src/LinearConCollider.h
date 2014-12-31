@@ -35,18 +35,17 @@ private:
   Vector3d normal;
 };
 
-// self collision constraints: c = n^t*(xi-a*xj-b*xk-c*xl),
-// where a,b,c is the weight coordinates.
-class SelfConCache{
+// self collision constraints between a tetrahedron and a vertex.
+class VolumeSelfConCache{
 
 public:
   bool handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,boost::shared_ptr<FEMBody> bv,
 			  boost::shared_ptr<FEMVertex> v,const Vec4& bary, VVVec4d &linear_con);
-  void convertToLinearCon(VVVec4d &linear_con);
   void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
   void addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, VectorXd &force, double mu_s, double mu_k)const;
 
 protected:
+  bool convertToLinearCon(VVVec4d &linear_con);
   double computeLambda(const double lambda[5])const;
   void findFeasiblePoints(Vector15d &x)const;
   double fun(const Vector15d &x)const;
@@ -60,10 +59,37 @@ private:
   Vector3d n[5];
 };
 
+// self collision constraints between a triangle and a vertex.
+// c = n^t*(xi-a*xj-b*xk-c*xl), where a,b,c is the weight coordinates.
+class SurfaceSelfConCache{
+public:
+  SurfaceSelfConCache(){
+	i = j = k = l = -1;
+	a = b = c = -1.0f;
+	n.setZero();
+	x0.setZero();
+  }
+  bool handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],
+			  sizeType nrV, VVVec4d &linear_con, VectorXd &pos0);
+  void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
+  void addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, 
+						  VectorXd &force, double mu_s, double mu_k)const;
+
+protected:
+  bool convertToLinearCon(VVVec4d &linear_con);
+  double computeLambda(const double lambda[4])const;
+
+private:
+  int i,j,k,l;
+  int pi, pj, pk, pl;
+  double a,b,c;
+  Vector3d n, x0;
+};
+
 /**
  * Handle both self and geometric collisions, and return them as linear constraints.
- * 1. self collision constraints: c = n^t*(xi-a*xj-b*xk-c*xl).
- * 2. geometric collision constraints: c = n^t*xi+p.
+ * 1. self collision constraints.
+ * 2. geometric collision constraints.
  */
 class LinearConCollider:public FEMCollider{
   
@@ -78,8 +104,9 @@ public:
 	const size_t num_verts = pos0.size()/3;
 	linear_con.clear();
 	linear_con.resize(num_verts);
-	self_con.clear();
 	geom_con.clear();
+	vol_self_con.clear();
+	surface_self_con.clear();
 	all_lambdas.clear();
   }
 
@@ -90,7 +117,7 @@ public:
 	friction_k = mu_k;
   }
 
-  void handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV) {}
+  void handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV);
 
   void handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n);
 
@@ -110,8 +137,9 @@ public:
 
 private:
   VVVec4d linear_con;
-  vector<SelfConCache> self_con;
   vector<GeomConCache> geom_con;
+  vector<VolumeSelfConCache> vol_self_con;
+  vector<SurfaceSelfConCache> surface_self_con;
   vector<vector<double> > all_lambdas;
   VectorXd &pos0;
   double friction_s;
