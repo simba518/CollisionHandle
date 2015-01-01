@@ -238,6 +238,7 @@ void Simulator::run(){
 
   boost::filesystem::create_directory(saveResultsTo());
   boost::filesystem::create_directory(saveResultsTo()+"/binary/");
+  boost::filesystem::create_directory(saveResultsTo()+"/abq/");
 
   fem_solver->getMesh().writeVTK(saveResultsTo()+"/mesh.vtk");
   fem_solver->_geom->writeVTK(saveResultsTo()+"/scene.vtk");
@@ -257,6 +258,12 @@ void Simulator::run(){
 	ostringstream ossm_vtk;
   	ossm_vtk << saveResultsTo() << "/frame_" << frame << ".vtk";
   	fem_solver->getMesh().writeVTK( ossm_vtk.str());
+
+	for (int i = 0; i < fem_solver->getMesh().nrB(); ++i){
+	  ostringstream ossm_abq;
+	  ossm_abq << saveResultsTo() << "/abq/obj_"<<i<< "_frame_" << frame << ".abq";
+	  fem_solver->getMesh().getB(i).writeABQ(ossm_abq.str());
+	}
 
   	fem_solver->advance( timeStep() );
   }

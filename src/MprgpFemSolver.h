@@ -50,7 +50,7 @@ private:
   boost::shared_ptr<LinearConCollider> collider;
   size_t num_var;
   vector<size_t> off_var;
-  VectorXd pos0, pos1, vel0, vel1;
+  VectorXd pos0, pos1, vel0, vel1, feasible_pos;
   TRIPS HTrips, UTrips;
   double mprgp_tol;
   int mprgp_max_it;

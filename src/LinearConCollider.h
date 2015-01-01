@@ -23,7 +23,7 @@ public:
 	normal.setZero();
   }
   bool handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n,
-			  VVVec4d &linear_con, VectorXd &pos0);
+			  VVVec4d &linear_con, VectorXd &feasible_pos);
   void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
   void addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, VectorXd &force, double mu_s, double mu_k)const;
   
@@ -70,7 +70,7 @@ public:
 	x0.setZero();
   }
   bool handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],
-			  sizeType nrV, VVVec4d &linear_con, VectorXd &pos0);
+			  sizeType nrV, VVVec4d &linear_con, VectorXd &feasible_pos);
   void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
   void addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, 
 						  VectorXd &force, double mu_s, double mu_k)const;
@@ -94,14 +94,14 @@ private:
 class LinearConCollider:public FEMCollider{
   
 public:
-  LinearConCollider(VectorXd &pos0):pos0(pos0){
+  LinearConCollider(VectorXd &feasible_pos):feasible_pos(feasible_pos){
 	setFriction(0.5f, 0.4f);
 	reset();
   }
 
   void reset(){
 
-	const size_t num_verts = pos0.size()/3;
+	const size_t num_verts = feasible_pos.size()/3;
 	linear_con.clear();
 	linear_con.resize(num_verts);
 	geom_con.clear();
@@ -141,7 +141,7 @@ private:
   vector<VolumeSelfConCache> vol_self_con;
   vector<SurfaceSelfConCache> surface_self_con;
   vector<vector<double> > all_lambdas;
-  VectorXd &pos0;
+  VectorXd &feasible_pos;
   double friction_s;
   double friction_k;
 };

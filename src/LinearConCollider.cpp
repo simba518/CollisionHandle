@@ -7,7 +7,7 @@
 USE_PRJ_NAMESPACE
 
 bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,
-						  const Vec3& n, VVVec4d &linear_con, VectorXd &pos0){
+						  const Vec3& n, VVVec4d &linear_con, VectorXd &feasible_pos){
 
   if(n.norm() < ScalarUtil<double>::scalar_eps)
 	return false;
@@ -34,8 +34,8 @@ bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVert
   const bool added = addConPlane(linear_con[vert_id], plane);
 
   if(added){
-
-	pos0.segment<3>(vert_id*3) = x;
+	// assert_ext(MATH::isFeasible(linear_con[vert_id], x), "x: "<<x.transpose());
+	feasible_pos.segment<3>(vert_id*3) = x;
 	this->vert_id = vert_id;
 	this->plane_id = linear_con[vert_id].size()-1;
 	normal = plane.segment<3>(0);
@@ -103,7 +103,7 @@ bool GeomConCache::addConPlane(VVec4d &planes, const Vector4d &p){
 
 bool VolumeSelfConCache::handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,boost::shared_ptr<FEMBody> bv,
 						  boost::shared_ptr<FEMVertex> v,const Vec4& bary, VVVec4d &linear_con){
-  
+
   // compute v[i], d[i]
   this->v[0] = bv->_offset/3 + v->_index;
   initial_x.segment<3>(0) = v->_pos;
@@ -206,7 +206,7 @@ void VolumeSelfConCache::addFrictionalForce(const VectorXd &vel, const vector<ve
 }
 
 bool SurfaceSelfConCache::handle(boost::shared_ptr<FEMBody> body[5], boost::shared_ptr<FEMVertex> v[5],
-								 const Vec3d coef[5], sizeType nrV, VVVec4d &linear_con, VectorXd &pos0){
+								 const Vec3d coef[5], sizeType nrV, VVVec4d &linear_con, VectorXd &feasible_pos){
 
   i = body[0]->_offset/3 + v[0]->_index;
   j = body[1]->_offset/3 + v[1]->_index;
@@ -218,6 +218,8 @@ bool SurfaceSelfConCache::handle(boost::shared_ptr<FEMBody> body[5], boost::shar
   const Vector3d &vl = v[3]->_pos;
   // n = coef[0]; /// @bug
   n = ((vk-vj).cross(vl-vj)).normalized();
+  assert_eq(n,n);
+  // cout << "diff(n): " << (n-coef[0]).norm() << endl;
 
   a = -coef[1].dot(n);
   b = -coef[2].dot(n);
@@ -227,10 +229,15 @@ bool SurfaceSelfConCache::handle(boost::shared_ptr<FEMBody> body[5], boost::shar
   assert_in(c, 0,1);
 
   x0 = vj*a + vk*b + vl*c;
+  x0 -= (n.dot(x0-vj))*n; /// @bug
 
   const bool added = convertToLinearCon(linear_con);
   if ( added ){
-	pos0.segment<3>(this->i*3) = x0;
+	feasible_pos.segment<3>(i*3) = x0;
+	// assert_ext(MATH::isFeasible(linear_con[i],x0), "con size: "<<linear_con[i].size());
+	// assert_ext(MATH::isFeasible(linear_con[j],feasible_pos.segment<3>(j*3)), "con size: "<<linear_con[j].size()<< ", j="<<j);
+	// assert_ext(MATH::isFeasible(linear_con[k],feasible_pos.segment<3>(k*3)), "con size: "<<linear_con[k].size()<< ", k="<<k);
+	// assert_ext(MATH::isFeasible(linear_con[l],feasible_pos.segment<3>(l*3)), "con size: "<<linear_con[l].size()<< ", l="<<l);
   }
   return added;
 }
@@ -300,7 +307,7 @@ double SurfaceSelfConCache::computeLambda(const double lambda[4])const{
 void LinearConCollider::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n){
 
   GeomConCache one_con;
-  if( one_con.handle(b, v, n, linear_con, pos0) )
+  if( one_con.handle(b, v, n, linear_con, feasible_pos) )
 	geom_con.push_back(one_con);
 }
 
@@ -317,7 +324,7 @@ void LinearConCollider::handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr
 							   const Vec3d coef[5],sizeType nrV) {
   
   SurfaceSelfConCache one_con;
-  if ( one_con.handle(b, v, coef, nrV, linear_con, pos0) ){
+  if ( one_con.handle(b, v, coef, nrV, linear_con, feasible_pos) ){
 	surface_self_con.push_back(one_con);
   }
 }
