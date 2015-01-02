@@ -76,8 +76,8 @@ IF(EIGEN3_FOUND)
 ENDIF(EIGEN3_FOUND)
 
 SET(LIBDIR ${PROJECT_SOURCE_DIR}/lib/${CMAKE_BUILD_TYPE_DIR})
-# SET(ELASTIC_SOLVER_LIB  /home/simba/Workspace/ElasticSolver/lib/libelastic_solver.a)
-SET(ELASTIC_SOLVER_LIB  /home/simba/Workspace/ElasticSolverOld/lib/libelastic_solver.a)
+SET(ELASTIC_SOLVER_LIB  /home/simba/Workspace/ElasticSolver/lib/libelastic_solver.a)
+# SET(ELASTIC_SOLVER_LIB  /home/simba/Workspace/ElasticSolverOld/lib/libelastic_solver.a)
 SET(COMMON_FILE_LIB  /home/simba/Workspace/CommonFile/build/libDEC.so)
 
 INCLUDE_DIRECTORIES(
@@ -85,8 +85,8 @@ INCLUDE_DIRECTORIES(
   /usr/local/include/MPRGP
   /home/simba/Workspace/CommonFile
   /home/simba/Workspace/CommonFile/solvers
-  # /home/simba/Workspace/ElasticSolver
-  /home/simba/Workspace/ElasticSolverOld
+  /home/simba/Workspace/ElasticSolver
+  # /home/simba/Workspace/ElasticSolverOld
   ${PROJECT_SOURCE_DIR}/src/
 )
 
