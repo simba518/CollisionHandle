@@ -20,3 +20,5 @@
 # ./bin/release/collision_handle ./data/one_tet/plane.ini > tempt/one_tet_plane.txt
 # ./bin/release/collision_handle ./data/one_tet/selfcon.ini > tempt/one_tet_selfcon.txt
 ./bin/release/collision_handle ./data/one_tet/selfcon_ball.ini>tempt/one_tet_selfcon_ball.txt
+
+# ./bin/release/collision_handle ./data/beam-coarse/self_con.ini> tempt/beam_coarse_self_con.txt

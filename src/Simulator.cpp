@@ -13,6 +13,11 @@
 using namespace UTILITY;
 USE_PRJ_NAMESPACE
 
+Simulator::Simulator() {
+  // fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExt(3,2) );
+  fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExtDebug() );
+}
+
 void Simulator::init(const string &json_file){
 
   // open init file
