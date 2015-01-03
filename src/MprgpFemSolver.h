@@ -13,24 +13,9 @@ class FemSolverExt:public FEMSolver{
 public:
   FemSolverExt(sizeType dim=3,sizeType cOption=2): FEMSolver(dim, cOption){
 	current_frame = 0;
-	use_simple_sim = false;
 	setTargetFold( "./tempt");
   }
-  void useSimpleSimulation(const bool use){
-	this->use_simple_sim = use;
-  }
-  void setVel(const Vector3d &vel, const int body_id){
-	// assert_in(body_id, 0, _mesh->nrB()-1);
-	// assert( _mesh->getB(body_id)._system );
-
-	// FEMSystem& sys = *(_mesh->getB(body_id)._system);
-	// VectorXd velB;
-	// sys.getVel(velB);
-	// for(int j = 0; j < velB.size(); j += 3){
-	// 	velB.segment<3>(j) = vel;
-	// }
-	// sys.setVel(velB);
-  }
+  void setVel(const Vector3d &vel, const int body_id);
   void setTargetFold(const string &fold_for_saving_results){
 	save_results_to = fold_for_saving_results;
 	boost::filesystem::create_directory(save_results_to);
@@ -66,7 +51,6 @@ public:
 protected:
   int current_frame;
   string save_results_to;
-  bool use_simple_sim;
 };
 
 class MprgpFemSolver:public FemSolverExt{

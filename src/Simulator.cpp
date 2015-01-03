@@ -233,10 +233,6 @@ void Simulator::init(const string &json_file){
 	jsonf.read("enable_self_con", enable_self_con, false);
 	fem_solver->setSelfColl(enable_self_con);
 
-	bool use_simple_sim = false;
-	jsonf.read("use_simple_sim", use_simple_sim, false);
-	fem_solver->useSimpleSimulation(use_simple_sim);
-	
 	vector<vector<double> > init_vel;
 	if( jsonf.read("init_vel", init_vel) ){
 	  Vector3d vel;

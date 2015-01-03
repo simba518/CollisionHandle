@@ -221,14 +221,33 @@ void MprgpFemSolver::updateMesh(const double dt){
 
 void MprgpFemSolver::print()const{
 
-  // INFO_LOG("number of nodes: "<<nrVar()/3);
+  int num_var = 0;
+  for(int i=0;i<_mesh->nrB();i++){
+	assert(_mesh->getB(i)._system);
+	num_var += _mesh->getB(i)._system->size();
+  }
+
+  INFO_LOG("number of nodes: "<<num_var/3);
   // INFO_LOG("number of tets: "<<); /// @todo
   INFO_LOG("newton it: "<<_tree.get<int>("maxIter"));
   INFO_LOG("newton tol: "<<_tree.get<double>("eps"));
   INFO_LOG("mprgp it: "<<mprgp_max_it);
   INFO_LOG("mprgp tol: "<<mprgp_tol);
-  INFO_LOG("use simple simulation: "<< (use_simple_sim ? "true":"false"));
   collider->print();
+}
+
+void FemSolverExt::setVel(const Vector3d &vel, const int body_id){
+
+  assert_in(body_id, 0, _mesh->nrB()-1);
+  assert( _mesh->getB(body_id)._system );
+
+  FEMSystem& sys = *(_mesh->getB(body_id)._system);
+  VectorXd velB(sys.size());
+  for(int j = 0; j < velB.size(); j += 3){
+  	velB.segment<3>(j) = vel;
+  }
+  sys.onDirty();
+  sys.setVelL(velB);
 }
 
 void FemSolverExtDebug::advance(const double dt){
