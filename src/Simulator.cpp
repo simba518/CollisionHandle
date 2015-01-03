@@ -13,10 +13,7 @@
 using namespace UTILITY;
 USE_PRJ_NAMESPACE
 
-Simulator::Simulator() {
-  // fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExt(3,2) );
-  fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExtDebug() );
-}
+Simulator::Simulator() {}
 
 void Simulator::init(const string &json_file){
 
@@ -25,6 +22,19 @@ void Simulator::init(const string &json_file){
   JsonFilePaser jsonf;
   if ( !jsonf.open(json_file) ){
 	return;
+  }
+
+  // set fem solver
+  {
+	string solver_name = "mprgp";
+	jsonf.read("fem_solver",solver_name);
+	if(solver_name == "debug"){
+	  fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExtDebug() );
+	}else if(solver_name == "penalty"){
+	  fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExt(3,2) );
+	}else{
+	  fem_solver = boost::shared_ptr<FemSolverExt>( new MprgpFemSolver() );
+	}
   }
   
   // load mesh
@@ -237,10 +247,13 @@ void Simulator::init(const string &json_file){
 	  }
 	}
   }
+
+  DEBUG_LOG("finished to load init file.");
 }
 
 void Simulator::run(){
 
+  DEBUG_LOG("begin to run simulation.");
   boost::filesystem::create_directory(saveResultsTo());
   boost::filesystem::create_directory(saveResultsTo()+"/binary/");
   boost::filesystem::create_directory(saveResultsTo()+"/abq/");
@@ -253,8 +266,7 @@ void Simulator::run(){
 
   for (size_t frame = 0; frame < totalFrames(); ++frame){
     
-	cout << "step: " << frame << endl;
-
+	INFO_LOG("step: " << frame);
 	ostringstream ossm_bin;
   	ossm_bin << saveResultsTo() << "/binary/frame_" << frame << ".b";
 	std::ofstream mesh_file(ossm_bin.str(), ios::binary);

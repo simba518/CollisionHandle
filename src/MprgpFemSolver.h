@@ -3,7 +3,9 @@
 
 #include <boost/filesystem.hpp>
 #include <FEMSystem.h>
+#include <MPRGPSolver.h>
 #include "LinearConCollider.h"
+using namespace MATH;
 USE_PRJ_NAMESPACE
 
 class FemSolverExt:public FEMSolver{
@@ -12,7 +14,7 @@ public:
   FemSolverExt(sizeType dim=3,sizeType cOption=2): FEMSolver(dim, cOption){
 	current_frame = 0;
 	use_simple_sim = false;
-	save_results_to = "./tempt";
+	setTargetFold( "./tempt");
   }
   void useSimpleSimulation(const bool use){
 	this->use_simple_sim = use;
@@ -82,30 +84,26 @@ public:
 	collider->setFriction(mu_s, mu_k);
   }
 
-  const vector<size_t> &getVarOffset()const{return off_var;}
   const VVVec4d &getLinearCon()const{return collider->getLinearCon();}
   void print()const;
 
 protected:
-  void handleCollDetection();
   void buildVarOffset();
-  void initVelPos(const double dt);
+  void initPos(const double dt);
+  void handleCollDetection();
+  void initVel(const double dt);
+  double updatePos();
   void updateMesh(const double dt);
   void forward(const double dt);
-  void forwardSimple(const double dt);
+  void solve(const SparseMatrix<double> &LHS_mat, VectorXd &RHS, 
+			 PlaneProjector<double> &projector, PlaneProjector<double> &projector_no_con);
   void buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS, const double dt);
-  double updateVelPos(const VectorXd &new_pos, const double dt);
 
 private:
   boost::shared_ptr<LinearConCollider> collider;
-  size_t num_var;
-  vector<size_t> off_var;
-  VectorXd pos0, pos1, vel0, vel1, feasible_pos;
-  TRIPS HTrips, UTrips;
+  VectorXd x0, x1, X0, X1, PHI, PSI, feasible_pos, new_pos;
   double mprgp_tol;
   int mprgp_max_it;
-  int newton_inner_max_it;
-  double newton_inner_tol;
 };
 
 class FemSolverExtDebug:public FemSolverExt{

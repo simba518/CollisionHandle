@@ -194,7 +194,7 @@ void MprgpFemSolver::forwardSimple(const double dt){
   }
 }
 
-void MprgpFemSolver::buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS, const double dt){
+void MprgpFemSolver::buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS,const double dt){
   
   RHS.resize(num_var);
   LHS.resize(num_var,num_var);

@@ -224,9 +224,9 @@ bool SurfaceSelfConCache::handle(boost::shared_ptr<FEMBody> body[5], boost::shar
   a = -coef[1].dot(n);
   b = -coef[2].dot(n);
   c = -coef[3].dot(n);
-  assert_in(a, 0,1);
-  assert_in(b, 0,1);
-  assert_in(c, 0,1);
+  // assert_in(a, 0,1);
+  // assert_in(b, 0,1);
+  // assert_in(c, 0,1);
 
   x0 = vj*a + vk*b + vl*c;
   x0 -= (n.dot(x0-vj))*n; /// @bug
