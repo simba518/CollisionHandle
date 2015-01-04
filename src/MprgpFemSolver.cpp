@@ -1,6 +1,7 @@
 #include <FEMCollision.h>
 #include <MPRGPSolver.h>
 #include "MprgpFemSolver.h"
+#include "MoseckQPSolver.h"
 using namespace MATH;
 USE_PRJ_NAMESPACE
 
@@ -387,3 +388,31 @@ void FemSolverExtDebug::advance(const double dt){
 #undef BLK
 #undef BLKL
 #undef BLKF
+
+void MoseckFemSolver::forward(const double dt){
+  
+  const double eps=_tree.get<double>("eps");
+  const int maxIter=_tree.get<int>("maxIter");
+
+  Vec RHS(nrVar());
+  _LHS.reset(nrVar(),nrVar(),false);
+  _U.reset(nrVarF(),nrVar(),false);
+
+  SparseMatrix<double> A;
+  VectorXd c;
+  collider->getConstraints(A, c, false);
+
+  SparseMatrix<double> LHS_mat;
+  for (int i = 0; i < maxIter; i++) {
+
+	MoseckQPSolver solver;
+	solver.setConstraints(A, c, nrVar());
+
+	buildLinearSystem(LHS_mat, RHS, dt);
+	new_pos = feasible_pos;
+	RHS = -RHS;
+	solver.solve(LHS_mat, RHS, new_pos);
+	if (updatePos() < eps)
+	  break;
+  }
+}

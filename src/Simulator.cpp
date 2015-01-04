@@ -32,6 +32,8 @@ void Simulator::init(const string &json_file){
 	  fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExtDebug() );
 	}else if(solver_name == "penalty"){
 	  fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExt(3,2) );
+	}else if(solver_name == "moseck"){
+	  fem_solver = boost::shared_ptr<FemSolverExt>( new MoseckFemSolver() );
 	}else{
 	  fem_solver = boost::shared_ptr<FemSolverExt>( new MprgpFemSolver() );
 	}

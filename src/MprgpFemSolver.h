@@ -53,6 +53,13 @@ protected:
   string save_results_to;
 };
 
+class FemSolverExtDebug:public FemSolverExt{
+	
+public:
+  FemSolverExtDebug():FemSolverExt(){}
+  void advance(const double dt);
+};
+
 class MprgpFemSolver:public FemSolverExt{
 	
 public:
@@ -72,29 +79,33 @@ public:
   void print()const;
 
 protected:
+  virtual void forward(const double dt);
+
   void buildVarOffset();
   void initPos(const double dt);
   void handleCollDetection();
   void initVel(const double dt);
   double updatePos();
   void updateMesh(const double dt);
-  void forward(const double dt);
   void solve(const SparseMatrix<double> &LHS_mat, VectorXd &RHS, 
 			 PlaneProjector<double> &projector, PlaneProjector<double> &projector_no_con);
   void buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS, const double dt);
 
-private:
+protected:
   boost::shared_ptr<LinearConCollider> collider;
   VectorXd x0, x1, X0, X1, PHI, PSI, feasible_pos, new_pos;
   double mprgp_tol;
   int mprgp_max_it;
 };
 
-class FemSolverExtDebug:public FemSolverExt{
-	
+class MoseckFemSolver:public MprgpFemSolver{
+
 public:
-  FemSolverExtDebug():FemSolverExt(){}
-  void advance(const double dt);
+  MoseckFemSolver():MprgpFemSolver(){}
+
+protected:
+  void forward(const double dt);
+
 };
   
 #endif /*_MPRGPFEMSOLVER_H_*/

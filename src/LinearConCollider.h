@@ -14,6 +14,7 @@ typedef vector<Vector4d,Eigen::aligned_allocator<Vector4d> > VVec4d;
 typedef vector<VVec4d > VVVec4d;
 typedef Matrix<double,15,1> Vector15d;
 typedef Matrix<double,16,1> Vector16d;
+typedef vector<Triplet<double,int> > TRIPS;
 
 class GeomConCache{
   
@@ -26,6 +27,8 @@ public:
 			  VVVec4d &linear_con, VectorXd &feasible_pos);
   void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
   void addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, VectorXd &force, double mu_s, double mu_k)const;
+
+  void getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const;
   
   static bool addConPlane(VVec4d &con_planes, const Vector4d &p);
   
@@ -43,6 +46,8 @@ public:
 			  boost::shared_ptr<FEMVertex> v,const Vec4& bary, VVVec4d &linear_con);
   void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
   void addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, VectorXd &force, double mu_s, double mu_k)const;
+
+  void getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const;
 
 protected:
   bool convertToLinearCon(VVVec4d &linear_con);
@@ -74,6 +79,8 @@ public:
   void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
   void addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, 
 						  VectorXd &force, double mu_s, double mu_k)const;
+
+  void getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const;
 
 protected:
   bool convertToLinearCon(VVVec4d &linear_con);
@@ -132,6 +139,9 @@ public:
   void addFrictionalForce(const VectorXd &vel, VectorXd &force)const;
 
   const VVVec4d &getLinearCon()const{return linear_con;}
+
+  // get A and c for: A*x >= c
+  void getConstraints(SparseMatrix<double> &A, VectorXd &c, const bool decoupled=false)const;
 
   void print()const;
 

@@ -81,6 +81,7 @@ SET(ELASTIC_SOLVER_LIB  /home/simba/Workspace/ElasticSolver/lib/libelastic_solve
 SET(COMMON_FILE_LIB  /home/simba/Workspace/CommonFile/build/libDEC.so)
 
 INCLUDE_DIRECTORIES(
+  /home/simba/mosek/7/tools/platform/linux64x86/h
   /usr/local/include/utility
   /usr/local/include/MPRGP
   /home/simba/Workspace/CommonFile

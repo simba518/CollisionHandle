@@ -101,6 +101,22 @@ bool GeomConCache::addConPlane(VVec4d &planes, const Vector4d &p){
   }
 }
 
+void GeomConCache::getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const{
+  
+  assert_in(vert_id, 0, linear_con.size()-1);
+  assert_in(plane_id, 0, linear_con[vert_id].size()-1);
+  const double p = linear_con[vert_id][plane_id][3];
+  const Vector3d& n = normal;
+
+  const int row = rhs.size();
+  const int col0 = vert_id*3;
+  trips.push_back( Triplet<double,int>(row, col0+0, n[0]) );
+  trips.push_back( Triplet<double,int>(row, col0+1, n[1]) );
+  trips.push_back( Triplet<double,int>(row, col0+2, n[2]) );
+
+  rhs.push_back(-p);
+}
+
 bool VolumeSelfConCache::handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,boost::shared_ptr<FEMBody> bv,
 						  boost::shared_ptr<FEMVertex> v,const Vec4& bary, VVVec4d &linear_con){
 
@@ -205,6 +221,11 @@ void VolumeSelfConCache::addFrictionalForce(const VectorXd &vel, const vector<ve
   /// @todo
 }
 
+void VolumeSelfConCache::getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const{
+  
+  /// @todo
+}
+
 bool SurfaceSelfConCache::handle(boost::shared_ptr<FEMBody> body[5], boost::shared_ptr<FEMVertex> v[5],
 								 const Vec3d coef[5], sizeType nrV, VVVec4d &linear_con, VectorXd &feasible_pos){
 
@@ -304,6 +325,18 @@ double SurfaceSelfConCache::computeLambda(const double lambda[4])const{
   return result;
 }
 
+void SurfaceSelfConCache::getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const{
+  
+  const int row = rhs.size();
+  for (int dim = 0; dim < 3; ++dim){
+	trips.push_back( Triplet<double,int>(row, i*3+dim, n[dim]) );
+	trips.push_back( Triplet<double,int>(row, j*3+dim, -a*n[dim]) );
+	trips.push_back( Triplet<double,int>(row, k*3+dim, -b*n[dim]) );
+	trips.push_back( Triplet<double,int>(row, l*3+dim, -c*n[dim]) );
+  }
+  rhs.push_back(0);
+}
+
 void LinearConCollider::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n){
 
   GeomConCache one_con;
@@ -351,6 +384,58 @@ void LinearConCollider::addFrictionalForce(const VectorXd &vel, VectorXd &force)
 
   for(size_t i = 0; i < surface_self_con.size(); i++)
 	surface_self_con[i].addFrictionalForce(vel, all_lambdas, force, friction_s, friction_k);
+}
+
+void LinearConCollider::getConstraints(SparseMatrix<double> &A, VectorXd &c, const bool decoupled)const{
+
+  TRIPS trips;
+  vector<double> rhs;
+
+  if (!decoupled){
+
+	trips.reserve(geom_con.size()*3+vol_self_con.size()*15+surface_self_con.size()*12);
+	rhs.reserve(geom_con.size()+vol_self_con.size()+surface_self_con.size());
+
+	for(size_t i = 0; i < geom_con.size(); i++)
+	  geom_con[i].getConstraints(trips, rhs, linear_con);
+
+	for(size_t i = 0; i < vol_self_con.size(); i++)
+	  vol_self_con[i].getConstraints(trips, rhs, linear_con);
+
+	for(size_t i = 0; i < surface_self_con.size(); i++)
+	  surface_self_con[i].getConstraints(trips, rhs, linear_con);
+
+  }else{
+
+	for (size_t vert_id = 0; vert_id < linear_con.size(); ++vert_id){
+
+	  for (size_t plane_id = 0; plane_id < linear_con[vert_id].size(); ++plane_id){
+
+		const double p = linear_con[vert_id][plane_id][3];
+		const Vector3d n = linear_con[vert_id][plane_id].head(3);
+
+		const int row = rhs.size();
+		const int col0 = vert_id*3;
+		trips.push_back( Triplet<double,int>(row, col0+0, n[0]) );
+		trips.push_back( Triplet<double,int>(row, col0+1, n[1]) );
+		trips.push_back( Triplet<double,int>(row, col0+2, n[2]) );
+
+		rhs.push_back(-p);
+	  }
+	}
+  }
+
+  const int num_var = getLinearCon().size()*3;
+  A.setZero();
+  A.resize(rhs.size(), num_var);
+  A.reserve(trips.size());
+  A.setFromTriplets( trips.begin(), trips.end() );
+  A.makeCompressed();
+  
+  c.resize(rhs.size());
+  for (int i = 0; i < c.size(); ++i){
+	c[i] = rhs[i];
+  }
 }
 
 void LinearConCollider::print()const{
