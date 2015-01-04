@@ -72,9 +72,6 @@ void MprgpFemSolver::handleCollDetection(){
 	DEBUG_FUN( _mesh->getColl().collideMesh(coll_debug, true) );
 	_mesh->getColl().collideMesh(*collider,true);
   }
-
-  const bool find_feasible = MATH::findFeasible(getLinearCon(), feasible_pos, true);
-  assert(find_feasible);
 }
 
 void MprgpFemSolver::initVel(const double dt){
@@ -110,6 +107,9 @@ void MprgpFemSolver::forward(const double dt){
   PlaneProjector<double> projector(getLinearCon(), feasible_pos);
   PlaneProjector<double> projector_no_con(empty_con, feasible_pos);
   SparseMatrix<double> LHS_mat;
+
+  const bool find_feasible = MATH::findFeasible(getLinearCon(), feasible_pos, true);
+  assert(find_feasible);
 
   for(int i = 0; i < maxIter; i++) {
 
@@ -160,29 +160,31 @@ void MprgpFemSolver::solve(const SparseMatrix<double> &LHS_mat, VectorXd &RHS,
 						   PlaneProjector<double> &projector_no_con){
 
   const FixedSparseMatrix<double> A(LHS_mat);
-  
-  // use constraints, no frictional and collision forces.
-  {
+  if( _tree.get<bool>("selfColl") ){
+
+	// use constraints, no frictional and collision forces.
 	new_pos = feasible_pos;
 	typedef DiagonalPlanePreconSolver<double,FixedSparseMatrix<double>,true> NoPreconditioner;
 	const int rlst_code=MPRGPPlane<double>::solve<FixedSparseMatrix<double>, NoPreconditioner>
 	  ( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
 	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl,rlst_code==0);
 	DEBUG_FUN( MPRGPPlane<double>::checkResult(LHS_mat, RHS, projector, new_pos, mprgp_tol));
-  }
-
-  // compute frictional and collision forces
-  {
+	
+	// compute frictional and collision forces
 	const VectorXd diff = LHS_mat*new_pos-RHS;
 	collider->computeAllLambdas( diff, projector.getFaceIndex() );
 	collider->addJordanForce(RHS);
 	// collider->addFrictionalForce(vel1, RHS); ///@todo no friction.
-  }
 
-  // use frictional and collision forces, and no constraints.
-  {
-	const int rlst_code = MPRGPPlane<double>::solve( A, RHS, projector_no_con, new_pos, mprgp_tol, mprgp_max_it);
-	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl,rlst_code==0);
+	// use frictional and collision forces, and no constraints.
+	const int code = MPRGPPlane<double>::solve(A,RHS,projector_no_con,new_pos,mprgp_tol,mprgp_max_it);
+	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<code<<endl,code==0);
+  }else{
+	
+	new_pos = feasible_pos;
+	const int code=MPRGPPlane<double>::solve(A,RHS,projector,new_pos,mprgp_tol,mprgp_max_it);
+	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<code<<endl,code==0);
+	DEBUG_FUN( MPRGPPlane<double>::checkResult(LHS_mat, RHS, projector, new_pos, mprgp_tol));
   }
 }
 
@@ -409,7 +411,7 @@ void MoseckFemSolver::forward(const double dt){
 	solver.setConstraints(A, c, nrVar());
 
 	buildLinearSystem(LHS_mat, RHS, dt);
-	new_pos = feasible_pos;
+	new_pos = x1;
 	RHS = -RHS;
 	solver.solve(LHS_mat, RHS, new_pos);
 	if (updatePos() < eps)
