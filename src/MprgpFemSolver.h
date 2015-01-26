@@ -11,9 +11,12 @@ USE_PRJ_NAMESPACE
 class FemSolverExt:public FEMSolver{
 	
 public:
-  FemSolverExt(sizeType dim=3,sizeType cOption=2): FEMSolver(dim, cOption){
+  FemSolverExt(sizeType cOption=2): FEMSolver(3, cOption){
+
+	_tree.put<bool>("denseSystem",false);
 	current_frame = 0;
 	setTargetFold( "./tempt");
+	solver_name = "FemSolverExt";
   }
   void setVel(const Vector3d &vel, const int body_id);
   void setTargetFold(const string &fold_for_saving_results){
@@ -24,6 +27,8 @@ public:
   }
 
   virtual void advance(const double dt){
+
+	FUNC_TIMER();
 	FEMSolver::advance(dt);
 	current_frame ++;
   }
@@ -37,18 +42,21 @@ public:
 	return current_frame;
   }
   virtual void print()const{
+
 	int num_var = 0;
 	for(int i = 0; i < _mesh->nrB(); i++){
 	  assert(_mesh->getB(i)._system);
 	  num_var += _mesh->getB(i)._system->size();
 	}
+	INFO_LOG("FEM Solver: "<< solver_name);
 	INFO_LOG("number of nodes: "<<num_var/3);
-	INFO_LOG("FEM Solver: FemSolverExt");
-	// INFO_LOG("newton max outter it: "<<_tree.get<int>("maxIter"));
-	// INFO_LOG("newton outter tol: "<<_tree.get<double>("eps"));
+	// INFO_LOG("number of tets: "<<); /// @todo
+	INFO_LOG("newton it: "<<_tree.get<int>("maxIter"));
+	INFO_LOG("newton tol: "<<_tree.get<double>("eps"));
   }
 
 protected:
+  string solver_name;
   int current_frame;
   string save_results_to;
 };
@@ -56,14 +64,16 @@ protected:
 class FemSolverExtDebug:public FemSolverExt{
 	
 public:
-  FemSolverExtDebug():FemSolverExt(){}
+  FemSolverExtDebug(int cOption=2):FemSolverExt(cOption){
+	solver_name = "FemSolverExtDebug";
+  }
   void advance(const double dt);
 };
 
 class MprgpFemSolver:public FemSolverExt{
 	
 public:
-  MprgpFemSolver();
+  MprgpFemSolver(int cOption=2);
   void advance(const double dt);
   void setLinearSolverParameters(const double mprgp_tol, const int mprgp_it){
 	assert_gt(mprgp_it, 0);
@@ -101,7 +111,9 @@ protected:
 class MoseckFemSolver:public MprgpFemSolver{
 
 public:
-  MoseckFemSolver():MprgpFemSolver(){}
+  MoseckFemSolver(int cOption=2):MprgpFemSolver(cOption){
+	solver_name = "MoseckFemSolver";
+  }
 
 protected:
   void forward(const double dt);

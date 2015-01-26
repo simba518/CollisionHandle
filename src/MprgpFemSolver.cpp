@@ -9,8 +9,9 @@ USE_PRJ_NAMESPACE
 #define BLKL(IN,I) (IN).block(_offVarL[i],0,_offVarL[i+1]-_offVarL[i],1)
 #define BLKF(IN,I) (IN).block(_offVarF[i],0,_offVarF[i+1]-_offVarF[i],1)
 
-MprgpFemSolver::MprgpFemSolver():FemSolverExt(3,2){
+MprgpFemSolver::MprgpFemSolver(int cOption):FemSolverExt(cOption){
 
+  solver_name = "MprgpFemSolver";
   collider = boost::shared_ptr<LinearConCollider>(new LinearConCollider(feasible_pos));
   mprgp_max_it = 1000;
   mprgp_tol = 1e-4;
@@ -65,11 +66,11 @@ void MprgpFemSolver::handleCollDetection(){
 	_mesh->getB(i)._system->beforeCollision();
   }
   if(_geom){
-	DEBUG_FUN( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
+	debug_fun( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
 	_mesh->getColl().collideGeom(*_geom,*collider,true);
   }
   if(_tree.get<bool>("selfColl")){
-	DEBUG_FUN( _mesh->getColl().collideMesh(coll_debug, true) );
+	debug_fun( _mesh->getColl().collideMesh(coll_debug, true) );
 	_mesh->getColl().collideMesh(*collider,true);
   }
 }
@@ -108,8 +109,8 @@ void MprgpFemSolver::forward(const double dt){
   PlaneProjector<double> projector_no_con(empty_con, feasible_pos);
   SparseMatrix<double> LHS_mat;
 
-  const bool find_feasible = MATH::findFeasible(getLinearCon(), feasible_pos, true);
-  assert(find_feasible);
+  // const bool find_feasible = MATH::findFeasible(getLinearCon(), feasible_pos, true);
+  // assert(find_feasible);
 
   for(int i = 0; i < maxIter; i++) {
 
@@ -168,7 +169,7 @@ void MprgpFemSolver::solve(const SparseMatrix<double> &LHS_mat, VectorXd &RHS,
 	const int rlst_code=MPRGPPlane<double>::solve<FixedSparseMatrix<double>, NoPreconditioner>
 	  ( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
 	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl,rlst_code==0);
-	DEBUG_FUN( MPRGPPlane<double>::checkResult(LHS_mat, RHS, projector, new_pos, mprgp_tol));
+	debug_fun( MPRGPPlane<double>::checkResult(LHS_mat, RHS, projector, new_pos, mprgp_tol));
 	
 	// compute frictional and collision forces
 	const VectorXd diff = LHS_mat*new_pos-RHS;
@@ -181,10 +182,10 @@ void MprgpFemSolver::solve(const SparseMatrix<double> &LHS_mat, VectorXd &RHS,
 	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<code<<endl,code==0);
   }else{
 	
-	new_pos = feasible_pos;
-	const int code=MPRGPPlane<double>::solve(A,RHS,projector,new_pos,mprgp_tol,mprgp_max_it);
-	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<code<<endl,code==0);
-	DEBUG_FUN( MPRGPPlane<double>::checkResult(LHS_mat, RHS, projector, new_pos, mprgp_tol));
+  	new_pos = feasible_pos;
+  	const int code=MPRGPPlane<double>::solve(A,RHS,projector,new_pos,mprgp_tol,mprgp_max_it);
+  	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<code<<endl,code==0);
+  	debug_fun( MPRGPPlane<double>::checkResult(LHS_mat, RHS, projector, new_pos, mprgp_tol));
   }
 }
 
@@ -224,16 +225,7 @@ void MprgpFemSolver::updateMesh(const double dt){
 
 void MprgpFemSolver::print()const{
 
-  int num_var = 0;
-  for(int i=0;i<_mesh->nrB();i++){
-	assert(_mesh->getB(i)._system);
-	num_var += _mesh->getB(i)._system->size();
-  }
-
-  INFO_LOG("number of nodes: "<<num_var/3);
-  // INFO_LOG("number of tets: "<<); /// @todo
-  INFO_LOG("newton it: "<<_tree.get<int>("maxIter"));
-  INFO_LOG("newton tol: "<<_tree.get<double>("eps"));
+  FemSolverExt::print();
   INFO_LOG("mprgp it: "<<mprgp_max_it);
   INFO_LOG("mprgp tol: "<<mprgp_tol);
   collider->print();
@@ -255,6 +247,8 @@ void FemSolverExt::setVel(const Vector3d &vel, const int body_id){
 
 void FemSolverExtDebug::advance(const double dt){
 
+  FUNC_TIMER();
+
   //initialize
   _mesh->buildOffset();
   const double collK=_tree.get<double>("collK");
@@ -274,11 +268,11 @@ void FemSolverExtDebug::advance(const double dt){
 	_mesh->getB(i)._system->beforeCollision();
   DefaultFEMCollider coll(*_mesh,collK,1.0f,1.0f);
   if(_geom){
-	DEBUG_FUN( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
+	debug_fun( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
 	_mesh->getColl().collideGeom(*_geom,coll,true);
   }
   if(selfColl){
-	DEBUG_FUN( _mesh->getColl().collideMesh(coll_debug, true) );
+	debug_fun( _mesh->getColl().collideMesh(coll_debug, true) );
 	_mesh->getColl().collideMesh(coll,true);
   }
 
@@ -312,8 +306,8 @@ void FemSolverExtDebug::advance(const double dt){
 	INFO("Newton Iteration");
 	  //main loop: we use Implicit Newmark Scheme
   Vec RHS(nrVar()),DELTA;
-  _LHS.reset(nrVar(),nrVar(),_tree.get<bool>("denseSystem"));
-  _U.reset(nrVarF(),nrVar(),_tree.get<bool>("denseSystem"));
+  _LHS.reset(nrVar(),nrVar(),false);
+  _U.reset(nrVarF(),nrVar(),false);
   for(int i=0; i<maxIter; i++) {
 	_LHS.clear();
 	_U.clear();

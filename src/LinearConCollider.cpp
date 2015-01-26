@@ -31,9 +31,9 @@ bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVert
   const int vert_id = b->_offset/3 + v->_index;
   assert_in(vert_id, 0, (int)linear_con.size());
   assert_eq_ext(plane, plane, "n:" << n.transpose());
-  const bool added = addConPlane(linear_con[vert_id], plane);
+  const int added = addConPlane(linear_con[vert_id], plane);
 
-  if(added){
+  if(added < 0){
 	// assert_ext(MATH::isFeasible(linear_con[vert_id], x), "x: "<<x.transpose());
 	feasible_pos.segment<3>(vert_id*3) = x;
 	this->vert_id = vert_id;
@@ -85,20 +85,19 @@ void GeomConCache::addFrictionalForce(const VectorXd &vel, const vector<vector<d
 
 }
 
-bool GeomConCache::addConPlane(VVec4d &planes, const Vector4d &p){
+int GeomConCache::addConPlane(VVec4d &planes, const Vector4d &p){
 
   assert_eq(p,p);
-  size_t k = 0;
-  for (; k < planes.size(); ++k){
+  int k = 0;
+  for (; k < (int)planes.size(); ++k){
 	if ((p-planes[k]).norm() <= 1e-4)
 	  break;
   }
-  if (k == planes.size()){
+  if (k == (int)planes.size()){
 	planes.push_back(p);
-	return true;
-  }else{
-	return false;
+	k = -1;
   }
+  return k;
 }
 
 void GeomConCache::getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const{
@@ -189,7 +188,7 @@ bool VolumeSelfConCache::convertToLinearCon(VVVec4d &linear_con){
 	n[i] = n[i]/norm;
 	plane.segment<3>(0) = n[i];
 	plane[3] = pi;
-	if( GeomConCache::addConPlane(linear_con[v[i]], plane) ){
+	if( GeomConCache::addConPlane(linear_con[v[i]], plane) < 0){
 	  added = true;
 	  plane_id[i] = linear_con[v[i]].size()-1;
 	}
@@ -226,8 +225,43 @@ void VolumeSelfConCache::getConstraints(TRIPS &trips, vector<double> &rhs, const
   /// @todo
 }
 
+bool SurfaceSelfConCache::validConstraints(const boost::shared_ptr<FEMBody> body[5], 
+										   const boost::shared_ptr<FEMVertex> v[5],
+										   const VVVec4d &linear_con, 
+										   const VectorXd &feasible_pos){
+  
+  const int  i = body[0]->_offset/3 + v[0]->_index;
+  if (linear_con[i].size() > 0){
+	return false;
+  }
+
+  const int  j = body[1]->_offset/3 + v[1]->_index;
+  const int  k = body[1]->_offset/3 + v[2]->_index;
+  const int  l = body[1]->_offset/3 + v[3]->_index;
+
+  const Vector3d &vj = v[1]->_pos;
+  const Vector3d &vk = v[2]->_pos;
+  const Vector3d &vl = v[3]->_pos;
+
+  if( (feasible_pos.segment<3>(j*3)-vj).norm() > 1e-9 ){
+	return false;
+  }
+  if( (feasible_pos.segment<3>(k*3)-vk).norm() > 1e-9 ){
+	return false;
+  }
+  if( (feasible_pos.segment<3>(l*3)-vl).norm() > 1e-9 ){
+	return false;
+  }
+
+  return true;
+}
+
 bool SurfaceSelfConCache::handle(boost::shared_ptr<FEMBody> body[5], boost::shared_ptr<FEMVertex> v[5],
 								 const Vec3d coef[5], sizeType nrV, VVVec4d &linear_con, VectorXd &feasible_pos){
+
+  if (!validConstraints(body, v, linear_con, feasible_pos)){
+	return false;
+  }
 
   i = body[0]->_offset/3 + v[0]->_index;
   j = body[1]->_offset/3 + v[1]->_index;
@@ -237,39 +271,38 @@ bool SurfaceSelfConCache::handle(boost::shared_ptr<FEMBody> body[5], boost::shar
   const Vector3d &vj = v[1]->_pos;
   const Vector3d &vk = v[2]->_pos;
   const Vector3d &vl = v[3]->_pos;
+
   // n = coef[0]; /// @bug
   n = ((vk-vj).cross(vl-vj)).normalized();
   assert_eq(n,n);
-  // cout << "diff(n): " << (n-coef[0]).norm() << endl;
 
   a = -coef[1].dot(n);
   b = -coef[2].dot(n);
   c = -coef[3].dot(n);
-  // assert_in(a, 0,1);
-  // assert_in(b, 0,1);
-  // assert_in(c, 0,1);
 
   x0 = vj*a + vk*b + vl*c;
   x0 -= (n.dot(x0-vj))*n; /// @bug
 
-  const bool added = convertToLinearCon(linear_con);
-  if ( added ){
-	feasible_pos.segment<3>(i*3) = x0;
-	// assert_ext(MATH::isFeasible(linear_con[i],x0), "con size: "<<linear_con[i].size());
-	// assert_ext(MATH::isFeasible(linear_con[j],feasible_pos.segment<3>(j*3)), "con size: "<<linear_con[j].size()<< ", j="<<j);
-	// assert_ext(MATH::isFeasible(linear_con[k],feasible_pos.segment<3>(k*3)), "con size: "<<linear_con[k].size()<< ", k="<<k);
-	// assert_ext(MATH::isFeasible(linear_con[l],feasible_pos.segment<3>(l*3)), "con size: "<<linear_con[l].size()<< ", l="<<l);
-  }
-  return added;
+  convertToLinearCon(linear_con);
+  feasible_pos.segment<3>(i*3) = x0;
+  assert_eq(linear_con[i].size(), 1);
+
+  // assert_ext(MATH::isFeasible(linear_con[i],x0), "con size: "<<linear_con[i].size());
+  // assert_ext(MATH::isFeasible(linear_con[j],feasible_pos.segment<3>(j*3)), "con size: "<<linear_con[j].size()<< ", j="<<j);
+  // assert_ext(MATH::isFeasible(linear_con[k],feasible_pos.segment<3>(k*3)), "con size: "<<linear_con[k].size()<< ", k="<<k);
+  // assert_ext(MATH::isFeasible(linear_con[l],feasible_pos.segment<3>(l*3)), "con size: "<<linear_con[l].size()<< ", l="<<l);
+
+  return true;
 }
 
 void SurfaceSelfConCache::addJordanForce(const vector<vector<double> > &all_lambdas, VectorXd &force)const{
   
   double lambda[4];
   lambda[0] = all_lambdas[i][pi];
-  lambda[1] = all_lambdas[i][pj];
-  lambda[2] = all_lambdas[i][pk];
-  lambda[3] = all_lambdas[i][pl];
+  lambda[1] = all_lambdas[j][pj];
+  lambda[2] = all_lambdas[k][pk];
+  lambda[3] = all_lambdas[l][pl];
+
   const Vector3d N = computeLambda(lambda)*n;
   force.segment<3>(i*3) += N;
   force.segment<3>(j*3) -= N*a;
@@ -284,38 +317,28 @@ void SurfaceSelfConCache::addFrictionalForce(const VectorXd &vel, const vector<v
 
 bool SurfaceSelfConCache::convertToLinearCon(VVVec4d &linear_con){
 
-  bool added = false;
-
   // add n*(xi-x0)
   Vector4d plane;
   plane.head(3) = n;
   plane[3] = -n.dot(x0);
 
-  if( GeomConCache::addConPlane(linear_con[i], plane) ){
-	added = true;
-	pi = linear_con[i].size()-1;
-  }
+  pi = GeomConCache::addConPlane(linear_con[i], plane);
+  if(pi < 0) pi = linear_con[i].size()-1;
 
   // add n*(xj,k,l - x0)
   plane.head(3) = -n;
   plane[3] = -plane[3];
 
-  if( GeomConCache::addConPlane(linear_con[j], plane) ){
-	added = true;
-	pj = linear_con[j].size()-1;
-  }
+  pj = GeomConCache::addConPlane(linear_con[j], plane);
+  if(pj < 0) pj = linear_con[j].size()-1;
 
-  if( GeomConCache::addConPlane(linear_con[k], plane) ){
-	added = true;
-	pk = linear_con[k].size()-1;  
-  }
+  pk = GeomConCache::addConPlane(linear_con[k], plane);
+  if(pk < 0) pk = linear_con[k].size()-1;
 
-  if( GeomConCache::addConPlane(linear_con[l], plane) ){
-	added = true;
-	pl = linear_con[l].size()-1;
-  }
+  pl = GeomConCache::addConPlane(linear_con[l], plane);
+  if(pl < 0) pl = linear_con[l].size()-1;
 
-  return added;
+  return true;
 }
 
 double SurfaceSelfConCache::computeLambda(const double lambda[4])const{

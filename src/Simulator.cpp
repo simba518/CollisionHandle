@@ -26,16 +26,23 @@ void Simulator::init(const string &json_file){
 
   // set fem solver
   {
+	string collision_type = "surface";
+	jsonf.read("collision_type", collision_type);
+	int collision_type_int = 2; // surface
+	if (collision_type == "volume"){
+	  collision_type_int = 1;
+	}
+
 	string solver_name = "mprgp";
 	jsonf.read("fem_solver",solver_name);
 	if(solver_name == "debug"){
-	  fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExtDebug() );
+	  fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExtDebug(collision_type_int) );
 	}else if(solver_name == "penalty"){
-	  fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExt(3,2) );
+	  fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExt(collision_type_int) );
 	}else if(solver_name == "moseck"){
-	  fem_solver = boost::shared_ptr<FemSolverExt>( new MoseckFemSolver() );
+	  fem_solver = boost::shared_ptr<FemSolverExt>( new MoseckFemSolver(collision_type_int) );
 	}else{
-	  fem_solver = boost::shared_ptr<FemSolverExt>( new MprgpFemSolver() );
+	  fem_solver = boost::shared_ptr<FemSolverExt>( new MprgpFemSolver(collision_type_int) );
 	}
   }
   

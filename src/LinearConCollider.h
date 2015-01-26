@@ -30,7 +30,7 @@ public:
 
   void getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const;
   
-  static bool addConPlane(VVec4d &con_planes, const Vector4d &p);
+  static int addConPlane(VVec4d &con_planes, const Vector4d &p);
   
 private:
   int vert_id;
@@ -81,6 +81,11 @@ public:
 						  VectorXd &force, double mu_s, double mu_k)const;
 
   void getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const;
+
+  static bool validConstraints(const boost::shared_ptr<FEMBody> body[5], 
+							   const boost::shared_ptr<FEMVertex> v[5],
+							   const VVVec4d &linear_con, 
+							   const VectorXd &feasible_pos);
 
 protected:
   bool convertToLinearCon(VVVec4d &linear_con);
