@@ -35,13 +35,14 @@ void Simulator::init(const string &json_file){
 
 	string solver_name = "mprgp";
 	jsonf.read("fem_solver",solver_name);
-	if(solver_name == "debug"){
-	  fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExtDebug(collision_type_int) );
-	}else if(solver_name == "penalty"){
+	if(solver_name == "penalty"){
 	  fem_solver = boost::shared_ptr<FemSolverExt>( new FemSolverExt(collision_type_int) );
 	}else if(solver_name == "moseck"){
 	  fem_solver = boost::shared_ptr<FemSolverExt>( new MoseckFemSolver(collision_type_int) );
+	}else if(solver_name == "ica"){
+	  fem_solver = boost::shared_ptr<FemSolverExt>( new ICAFemSolver(collision_type_int) );
 	}else{
+	  assert(solver_name == "mprgp");
 	  fem_solver = boost::shared_ptr<FemSolverExt>( new MprgpFemSolver(collision_type_int) );
 	}
   }

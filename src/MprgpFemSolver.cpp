@@ -1,5 +1,8 @@
+#include <Eigen/IterativeLinearSolvers>
 #include <FEMCollision.h>
 #include <MPRGPSolver.h>
+#include <ICASolver.h>
+#include <Timer.h>
 #include "MprgpFemSolver.h"
 #include "MoseckQPSolver.h"
 using namespace MATH;
@@ -107,7 +110,6 @@ void MprgpFemSolver::forward(const double dt){
   VVVec4d empty_con(nrVar()/3);
   PlaneProjector<double> projector(getLinearCon(), feasible_pos);
   PlaneProjector<double> projector_no_con(empty_con, feasible_pos);
-  SparseMatrix<double> LHS_mat;
 
   // const bool find_feasible = MATH::findFeasible(getLinearCon(), feasible_pos, true);
   // assert(find_feasible);
@@ -116,6 +118,9 @@ void MprgpFemSolver::forward(const double dt){
 
 	buildLinearSystem(LHS_mat, RHS, dt);
 	solve(LHS_mat, RHS, projector, projector_no_con);
+
+	// cout<< "fun: " << (LHS_mat*new_pos-RHS).norm() << endl;
+
 	if (updatePos() < eps) 
 	  break;
   }
@@ -165,9 +170,7 @@ void MprgpFemSolver::solve(const SparseMatrix<double> &LHS_mat, VectorXd &RHS,
 
 	// use constraints, no frictional and collision forces.
 	new_pos = feasible_pos;
-	typedef DiagonalPlanePreconSolver<double,FixedSparseMatrix<double>,true> NoPreconditioner;
-	const int rlst_code=MPRGPPlane<double>::solve<FixedSparseMatrix<double>, NoPreconditioner>
-	  ( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
+	const int rlst_code=MPRGPPlane<double>::solve( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
 	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl,rlst_code==0);
 	debug_fun( MPRGPPlane<double>::checkResult(LHS_mat, RHS, projector, new_pos, mprgp_tol));
 	
@@ -245,7 +248,7 @@ void FemSolverExt::setVel(const Vector3d &vel, const int body_id){
   sys.setVelL(velB);
 }
 
-void FemSolverExtDebug::advance(const double dt){
+void FemSolverExt::advance(const double dt){
 
   FUNC_TIMER();
 
@@ -259,21 +262,26 @@ void FemSolverExtDebug::advance(const double dt){
   const int maxIter=_tree.get<int>("maxIter");
 
   //handle collision detection
-  ostringstream oss3;
-  oss3 << saveResultsTo()+"/collisions/coll_"<< currentFrame() << ".vtk";
-  DebugFEMCollider coll_debug( oss3.str(), 3 );
-
   const bool selfColl=_tree.get<bool>("selfColl");
   for(int i=0; i<_mesh->nrB(); i++)
 	_mesh->getB(i)._system->beforeCollision();
   DefaultFEMCollider coll(*_mesh,collK,1.0f,1.0f);
   if(_geom){
-	debug_fun( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
 	_mesh->getColl().collideGeom(*_geom,coll,true);
   }
   if(selfColl){
-	debug_fun( _mesh->getColl().collideMesh(coll_debug, true) );
 	_mesh->getColl().collideMesh(coll,true);
+  }
+
+  // debug collision
+  if (debug_coll){
+	ostringstream oss3;
+	oss3 << saveResultsTo()+"/collisions/coll_"<< currentFrame() << ".vtk";
+	DebugFEMCollider coll_debug( oss3.str(), 3 );
+	if(_geom)
+	  _mesh->getColl().collideGeom( *_geom,coll_debug,true );
+	if(selfColl)
+	  _mesh->getColl().collideMesh(coll_debug, true);
   }
 
   Vec fE=coll.getFE();
@@ -304,7 +312,8 @@ void FemSolverExtDebug::advance(const double dt){
 
   if(_tree.get<bool>("debug",false))
 	INFO("Newton Iteration");
-	  //main loop: we use Implicit Newmark Scheme
+
+  //main loop: we use Implicit Newmark Scheme
   Vec RHS(nrVar()),DELTA;
   _LHS.reset(nrVar(),nrVar(),false);
   _U.reset(nrVarF(),nrVar(),false);
@@ -322,15 +331,15 @@ void FemSolverExtDebug::advance(const double dt){
 
 	//build LHS and RHS
 	for(int i=0; i<_mesh->nrB(); i++) {
-	  //tell system to build: M+(beta*dt*dt)*K+(gamma*dt)*C with off
-	  //tell system to build: U with offU
-	  //tell system to build: M(dSn+((1-gamma)*dt)*ddSn-dS_{n+1})+(gamma*dt)*f_I-C*dS_{n+1} with offU[1]
+	  //build: M+(beta*dt*dt)*K+(gamma*dt)*C with off
+	  //build: U with offU
+	  //build: M(dSn+((1-gamma)*dt)*ddSn-dS_{n+1})+(gamma*dt)*f_I-C*dS_{n+1} with offU[1]
 	  const FEMSystem& sys=*(_mesh->getB(i)._system);
 	  Vec RHSB=Vec::Zero(sys.size());
 	  Vec MRHSLB=BLKL(PSI-X1,i);
 	  Vec CRHSB=BLK(x0-x1,i)*beta*dt;
-	  sys.buildSystem(1.0f,beta*dt*dt,beta*dt,_LHS,_U,
-					  MRHSLB,CRHSB,beta*dt*dt,RHSB,_offVar[i]);
+	  const double dt2 = dt*dt;
+	  sys.buildSystem(1.0f,beta*dt2,beta*dt,_LHS,_U,MRHSLB,CRHSB,beta*dt2,RHSB,_offVar[i]);
 	  BLK(RHS,i)=RHSB;
 	}
 
@@ -349,8 +358,8 @@ void FemSolverExtDebug::advance(const double dt){
 	  }
 	}
 
-	//solve
-	DELTA=_LHS.solve(RHS);
+	//solve DELTA=_LHS.solve(RHS);
+	solve(_LHS, RHS, DELTA);
 	x1+=DELTA;
 	for(int i=0; i<_mesh->nrB(); i++) {
 	  FEMSystem& sys=*(_mesh->getB(i)._system);
@@ -381,6 +390,21 @@ void FemSolverExtDebug::advance(const double dt){
 
   current_frame ++;
 }
+
+void FemSolverExt::solve(const FEMSystemMatrix &LHS, const Vec &RHS, Vec &DELTA){
+
+  FUNC_TIMER();
+  if (!use_iterative_solver){
+	DELTA = LHS.solve(RHS);
+  }else{
+	const boost::shared_ptr<const TRIPS> trips = LHS.getSparse();
+	LHS_mat.resize(LHS.rows(), LHS.cols());
+	LHS_mat.setFromTriplets(trips->begin(),trips->end());
+	ConjugateGradient<SparseMatrix<double> > solver;
+	DELTA = solver.compute(LHS_mat).solve(RHS);
+  }
+}
+
 #undef BLK
 #undef BLKL
 #undef BLKF
@@ -398,7 +422,7 @@ void MoseckFemSolver::forward(const double dt){
   VectorXd c;
   collider->getConstraints(A, c, false);
 
-  SparseMatrix<double> LHS_mat;
+  UTILITY::Timer timer;
   for (int i = 0; i < maxIter; i++) {
 
 	MoseckQPSolver solver;
@@ -407,7 +431,57 @@ void MoseckFemSolver::forward(const double dt){
 	buildLinearSystem(LHS_mat, RHS, dt);
 	new_pos = x1;
 	RHS = -RHS;
+	timer.start();
 	solver.solve(LHS_mat, RHS, new_pos);
+	timer.stop("moseck solving time: ");
+	if (updatePos() < eps)
+	  break;
+  }
+}
+
+void ICAFemSolver::forward(const double dt){
+  
+  const double eps=_tree.get<double>("eps");
+  const int maxIter=_tree.get<int>("maxIter");
+
+  Vec RHS(nrVar());
+  _LHS.reset(nrVar(),nrVar(),false);
+  _U.reset(nrVarF(),nrVar(),false);
+
+  SparseMatrix<double> J;
+  VectorXd c, p;
+  collider->getConstraints(J, c, false);
+
+  UTILITY::Timer timer;
+  for (int i = 0; i < maxIter; i++) {
+
+	buildLinearSystem(LHS_mat, RHS, dt);
+
+	//solve for unconstrained x	
+	VectorXd &uncon_x = new_pos;
+	if (use_iterative_solver)
+	  uncon_x = x1;
+	ConjugateGradient<SparseMatrix<double> > cg_solver;
+	uncon_x = cg_solver.compute(LHS_mat).solve(RHS);
+
+	// solve for constrained x
+	if(c.size() > 0){
+
+	  x1 = uncon_x;
+
+	  ICASolver solver(mprgp_max_it, mprgp_tol);
+	  solver.reset(LHS_mat);
+	  p = c - J*uncon_x;
+
+	  timer.start();
+	  const bool succ = solver.solve(J, p, new_pos);
+	  assert(succ);
+	  timer.stop("ICA solving time: ");
+	  // solver.printSolveInfo(LHS_mat, J, p, new_pos);
+	  new_pos += x1;
+	}
+
+	// cout<< "fun: " << (LHS_mat*new_pos-RHS).norm() << endl;
 	if (updatePos() < eps)
 	  break;
   }

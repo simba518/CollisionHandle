@@ -17,6 +17,8 @@ public:
 	current_frame = 0;
 	setTargetFold( "./tempt");
 	solver_name = "FemSolverExt";
+	debug_coll = false;
+	use_iterative_solver = true;
   }
   void setVel(const Vector3d &vel, const int body_id);
   void setTargetFold(const string &fold_for_saving_results){
@@ -26,12 +28,7 @@ public:
 	boost::filesystem::create_directory(save_results_to+"/collisions/");
   }
 
-  virtual void advance(const double dt){
-
-	FUNC_TIMER();
-	FEMSolver::advance(dt);
-	current_frame ++;
-  }
+  virtual void advance(const double dt);
   virtual void setLinearSolverParameters(const double mprgp_tol, const int mprgp_it){}
   virtual void setFriction(const double mu_s, const double mu_k){}
 
@@ -53,21 +50,20 @@ public:
 	// INFO_LOG("number of tets: "<<); /// @todo
 	INFO_LOG("newton it: "<<_tree.get<int>("maxIter"));
 	INFO_LOG("newton tol: "<<_tree.get<double>("eps"));
+	INFO_LOG("debug collision: "<< (debug_coll ? "true":"false"));
+	INFO_LOG("use iterative solver: "<< (use_iterative_solver ? "true":"false"));
   }
+
+protected:
+  void solve(const FEMSystemMatrix &LHS, const Vec &RHS, Vec &DELTA);
 
 protected:
   string solver_name;
   int current_frame;
   string save_results_to;
-};
-
-class FemSolverExtDebug:public FemSolverExt{
-	
-public:
-  FemSolverExtDebug(int cOption=2):FemSolverExt(cOption){
-	solver_name = "FemSolverExtDebug";
-  }
-  void advance(const double dt);
+  bool debug_coll;
+  bool use_iterative_solver;
+  SparseMatrix<double> LHS_mat;
 };
 
 class MprgpFemSolver:public FemSolverExt{
@@ -119,5 +115,17 @@ protected:
   void forward(const double dt);
 
 };
-  
+
+class ICAFemSolver:public MprgpFemSolver{
+
+public:
+  ICAFemSolver(int cOption=2):MprgpFemSolver(cOption){
+	solver_name = "ICAFemSolver";
+  }
+
+protected:
+  void forward(const double dt);
+
+};
+
 #endif /*_MPRGPFEMSOLVER_H_*/
