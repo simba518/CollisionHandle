@@ -25,6 +25,7 @@
 
 # ./bin/release/collision_handle ./data/beam-coarse/selfcon.ini> tempt/beam_coarse_selfcon.txt
 
-./bin/release/collision_handle ./data/cube/selfcon_ica.ini> tempt/cube_selfcon_ica.txt
-# ./bin/release/collision_handle ./data/cube/selfcon_mprgp.ini> tempt/cube_selfcon_mprgp.txt
+# ./bin/release/collision_handle ./data/cube/selfcon_ica2.ini> tempt/cube_selfcon_ica2.txt
+# ./bin/release/collision_handle ./data/cube/selfcon_ica.ini> tempt/cube_selfcon_ica.txt
+./bin/release/collision_handle ./data/cube/selfcon_mprgp.ini> tempt/cube_selfcon_mprgp.txt
 # ./bin/release/collision_handle ./data/cube/selfcon_moseck.ini> tempt/cube_selfcon_moseck.txt

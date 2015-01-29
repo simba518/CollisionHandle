@@ -475,7 +475,9 @@ void ICAFemSolver::forward(const double dt){
 
 	  timer.start();
 	  const bool succ = solver.solve(J, p, new_pos);
-	  assert(succ);
+	  ERROR_LOG_COND("ICA is not convergent, (iterations, residual) = " << 
+					 solver.getIterations() << ", " << solver.getResidual(), succ);
+
 	  timer.stop("ICA solving time: ");
 	  // solver.printSolveInfo(LHS_mat, J, p, new_pos);
 	  new_pos += x1;
