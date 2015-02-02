@@ -77,7 +77,6 @@ bool MoseckQPSolver::setConstraints(const SparseMatrix<double>&A,const VectorXd 
 
 bool MoseckQPSolver::solve(const SparseMatrix<double> &Q, const VectorXd &b, VectorXd &x){
 
-  TRACE_FUN();
   x.resize(b.size());
   setObjectiveFunc(Q, b);
   optimize(x);

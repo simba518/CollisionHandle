@@ -24,6 +24,8 @@ void Simulator::init(const string &json_file){
 	return;
   }
 
+  int mesh_group_start_index = 0;
+  
   // set fem solver
   {
 	string collision_type = "surface";
@@ -64,13 +66,71 @@ void Simulator::init(const string &json_file){
 		fem_solver->getMesh().applyTrans(transRotScaleToMat(trans_rot_scale[i]),i,true,true);
 	}
   }
+
+  // load mesh group
+  {
+	DEBUG_LOG("load mesh group");
+
+	mesh_group_start_index = fem_solver->getMesh().nrB();
+	vector<string> group_vol_mtl_file;
+	vector<double> group_trans_rot_scale_vel;
+	vector<double> group_dx_dy_dz_nx_ny_nz;
+
+	if( jsonf.readFilePath("group_vol_mtl_file", group_vol_mtl_file) ){
+	  
+	  jsonf.read("group_trans_rot_scale_vel", group_trans_rot_scale_vel);
+	  jsonf.read("group_dx_dy_dz_nx_ny_nz", group_dx_dy_dz_nx_ny_nz);
+	  assert_eq(group_vol_mtl_file.size(), 2);
+	  assert_eq(group_trans_rot_scale_vel.size(), 10);
+	  assert_eq(group_dx_dy_dz_nx_ny_nz.size(), 6);
+
+	  FEMMesh tempt_mesh( fem_solver->getMesh() );
+	  tempt_mesh.reset(group_vol_mtl_file[0], 0.0f);
+
+	  vector<double> trans_rot_scale(7);
+	  trans_rot_scale[3] = group_trans_rot_scale_vel[3];
+	  trans_rot_scale[4] = group_trans_rot_scale_vel[4];
+	  trans_rot_scale[5] = group_trans_rot_scale_vel[5];
+	  trans_rot_scale[6] = group_trans_rot_scale_vel[6];
+
+	  Vector3d vel;
+	  vel << group_trans_rot_scale_vel[7], group_trans_rot_scale_vel[8], group_trans_rot_scale_vel[9];
+
+	  for (int xi = 0; xi < group_dx_dy_dz_nx_ny_nz[3]; ++xi){
+		for (int yi = 0; yi < group_dx_dy_dz_nx_ny_nz[4]; ++yi){
+		  for (int zi = 0; zi < group_dx_dy_dz_nx_ny_nz[5]; ++zi){
+
+			// mesh
+			const double tx = xi*group_dx_dy_dz_nx_ny_nz[0]+group_trans_rot_scale_vel[0];
+			const double ty = yi*group_dx_dy_dz_nx_ny_nz[1]+group_trans_rot_scale_vel[1];
+			const double tz = zi*group_dx_dy_dz_nx_ny_nz[2]+group_trans_rot_scale_vel[2];
+			fem_solver->getMesh() += tempt_mesh;
+			trans_rot_scale[0] = tx;
+			trans_rot_scale[1] = ty;
+			trans_rot_scale[2] = tz;
+			const int body_id = fem_solver->getMesh().nrB()-1; assert_ge(body_id,0);
+			fem_solver->getMesh().applyTrans(transRotScaleToMat(trans_rot_scale),body_id,true,true);
+
+			// material
+			fem_solver->getMesh().getB(body_id)._system.reset(new FEMSystem(fem_solver->getMesh().getB(body_id)));
+			FEMSystem& sys=*(fem_solver->getMesh().getB(body_id)._system);
+			sys.clearEnergy();
+			sys.readEnergy(group_vol_mtl_file[1], MaterialEnergy::COROTATIONAL, true);
+
+			// velocity
+			fem_solver->setVel(vel, body_id);
+		  }
+		}
+	  }
+	}
+  }
   
   // set material
   {
 	DEBUG_LOG("set material");
 	vector<string> elastic_mtl_file;
 	jsonf.readFilePath("elastic_mtl", elastic_mtl_file);
-	for (int i = 0; i < fem_solver->getMesh().nrB(); ++i){
+	for (int i = 0; i < fem_solver->getMesh().nrB() && i < mesh_group_start_index; ++i){
 	  fem_solver->getMesh().getB(i)._system.reset(new FEMSystem(fem_solver->getMesh().getB(i)));
 	  FEMSystem& sys=*(fem_solver->getMesh().getB(i)._system);
 	  sys.clearEnergy();
@@ -246,7 +306,7 @@ void Simulator::init(const string &json_file){
 	vector<vector<double> > init_vel;
 	if( jsonf.read("init_vel", init_vel) ){
 	  Vector3d vel;
-	  for (int i = 0; i < fem_solver->getMesh().nrB() && i < (int)init_vel.size(); ++i){
+	  for (int i = 0; i < fem_solver->getMesh().nrB() && i < (int)init_vel.size() && i < mesh_group_start_index; ++i){
 		assert_eq(init_vel[i].size(), 3);
 		vel << init_vel[i][0], init_vel[i][1], init_vel[i][2];
 		fem_solver->setVel(vel, i);

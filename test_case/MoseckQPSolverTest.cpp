@@ -103,7 +103,7 @@ BOOST_AUTO_TEST_CASE(testMoseck){
   // example download from: http://docs.mosek.com/7.1/capi/Quadratic_optimization.html
   const int NUMCON = 1;   /* Number of constraints.             */ 
   const int NUMVAR = 3;   /* Number of variables.               */ 
-  const int NUMANZ = 3;   /* Number of non-zeros in A.           */ 
+  // const int NUMANZ = 3;   /* Number of non-zeros in A.           */ 
   const int NUMQNZ = 4;   /* Number of non-zeros in Q.           */ 
 
   double        c[]   = {0.0,-1.0,0.0};
@@ -226,7 +226,6 @@ BOOST_AUTO_TEST_CASE(testMoseck){
 			  if ( r==MSK_RES_OK )
 				{
 				  MSKsolstae solsta;
-				  int j;
           
 				  MSK_getsolsta (task,MSK_SOL_ITR,&solsta);
           
@@ -237,10 +236,12 @@ BOOST_AUTO_TEST_CASE(testMoseck){
 					  MSK_getxx(task,
 								MSK_SOL_ITR,    /* Request the interior solution. */
 								xx);
-              
-					  printf("Optimal primal solution\n");
-					  for(j=0; j<NUMVAR; ++j)
-						printf("x[%d]: %e\n",j,xx[j]);
+					  ASSERT_EQ_TOL(xx[0], 5.975006e-05, 1e-5);
+					  ASSERT_EQ_TOL(xx[1], 5.000000e+00, 1e-5);
+					  ASSERT_EQ_TOL(xx[2], 5.975006e-05, 1e-5);
+					  // printf("Optimal primal solution\n");
+					  // for(int j=0; j<NUMVAR; ++j)
+					  // 	printf("x[%d]: %e\n",j,xx[j]);
               
 					  break;
 					case MSK_SOL_STA_DUAL_INFEAS_CER:

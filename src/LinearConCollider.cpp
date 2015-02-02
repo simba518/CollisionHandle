@@ -37,7 +37,7 @@ bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVert
 	// assert_ext(MATH::isFeasible(linear_con[vert_id], x), "x: "<<x.transpose());
 	feasible_pos.segment<3>(vert_id*3) = x;
 	this->vert_id = vert_id;
-	this->plane_id = linear_con[vert_id].size()-1;
+	this->plane_id = (int)linear_con[vert_id].size()-1;
 	normal = plane.segment<3>(0);
   }
 
@@ -47,7 +47,7 @@ bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVert
 void GeomConCache::addJordanForce(const vector<vector<double> > &all_lambdas, VectorXd &force)const{
 
   assert_eq(force.size(), (int)all_lambdas.size()*3);
-  assert_in(vert_id, 0, all_lambdas.size());
+  assert_in(vert_id, 0, (int)all_lambdas.size());
   assert_in(plane_id, 0, (int)all_lambdas[vert_id].size()-1);
 
   const double lambda = all_lambdas[vert_id][plane_id];
@@ -102,8 +102,8 @@ int GeomConCache::addConPlane(VVec4d &planes, const Vector4d &p){
 
 void GeomConCache::getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const{
   
-  assert_in(vert_id, 0, linear_con.size()-1);
-  assert_in(plane_id, 0, linear_con[vert_id].size()-1);
+  assert_in(vert_id, 0, (int)linear_con.size()-1);
+  assert_in(plane_id, 0, (int)linear_con[vert_id].size()-1);
   const double p = linear_con[vert_id][plane_id][3];
   const Vector3d& n = normal;
 
@@ -190,7 +190,7 @@ bool VolumeSelfConCache::convertToLinearCon(VVVec4d &linear_con){
 	plane[3] = pi;
 	if( GeomConCache::addConPlane(linear_con[v[i]], plane) < 0){
 	  added = true;
-	  plane_id[i] = linear_con[v[i]].size()-1;
+	  plane_id[i] = (int)linear_con[v[i]].size()-1;
 	}
   }
   return added;
@@ -323,20 +323,20 @@ bool SurfaceSelfConCache::convertToLinearCon(VVVec4d &linear_con){
   plane[3] = -n.dot(x0);
 
   pi = GeomConCache::addConPlane(linear_con[i], plane);
-  if(pi < 0) pi = linear_con[i].size()-1;
+  if(pi < 0) pi = (int)linear_con[i].size()-1;
 
   // add n*(xj,k,l - x0)
   plane.head(3) = -n;
   plane[3] = -plane[3];
 
   pj = GeomConCache::addConPlane(linear_con[j], plane);
-  if(pj < 0) pj = linear_con[j].size()-1;
+  if(pj < 0) pj = (int)linear_con[j].size()-1;
 
   pk = GeomConCache::addConPlane(linear_con[k], plane);
-  if(pk < 0) pk = linear_con[k].size()-1;
+  if(pk < 0) pk = (int)linear_con[k].size()-1;
 
   pl = GeomConCache::addConPlane(linear_con[l], plane);
-  if(pl < 0) pl = linear_con[l].size()-1;
+  if(pl < 0) pl = (int)linear_con[l].size()-1;
 
   return true;
 }
@@ -411,11 +411,10 @@ void LinearConCollider::addFrictionalForce(const VectorXd &vel, VectorXd &force)
 
 void LinearConCollider::getConstraints(SparseMatrix<double> &A, VectorXd &c, const bool decoupled)const{
 
-  TRIPS trips;
-  vector<double> rhs;
-
   if (!decoupled){
 
+	TRIPS trips;
+	vector<double> rhs;
 	trips.reserve(geom_con.size()*3+vol_self_con.size()*15+surface_self_con.size()*12);
 	rhs.reserve(geom_con.size()+vol_self_con.size()+surface_self_con.size());
 
@@ -428,36 +427,21 @@ void LinearConCollider::getConstraints(SparseMatrix<double> &A, VectorXd &c, con
 	for(size_t i = 0; i < surface_self_con.size(); i++)
 	  surface_self_con[i].getConstraints(trips, rhs, linear_con);
 
-  }else{
-
-	for (size_t vert_id = 0; vert_id < linear_con.size(); ++vert_id){
-
-	  for (size_t plane_id = 0; plane_id < linear_con[vert_id].size(); ++plane_id){
-
-		const double p = linear_con[vert_id][plane_id][3];
-		const Vector3d n = linear_con[vert_id][plane_id].head(3);
-
-		const int row = rhs.size();
-		const int col0 = vert_id*3;
-		trips.push_back( Triplet<double,int>(row, col0+0, n[0]) );
-		trips.push_back( Triplet<double,int>(row, col0+1, n[1]) );
-		trips.push_back( Triplet<double,int>(row, col0+2, n[2]) );
-
-		rhs.push_back(-p);
-	  }
-	}
-  }
-
-  const int num_var = getLinearCon().size()*3;
-  A.setZero();
-  A.resize(rhs.size(), num_var);
-  A.reserve(trips.size());
-  A.setFromTriplets( trips.begin(), trips.end() );
-  A.makeCompressed();
+	const int num_var = getLinearCon().size()*3;
+	A.setZero();
+	A.resize(rhs.size(), num_var);
+	A.reserve(trips.size());
+	A.setFromTriplets( trips.begin(), trips.end() );
+	A.makeCompressed();
   
-  c.resize(rhs.size());
-  for (int i = 0; i < c.size(); ++i){
-	c[i] = rhs[i];
+	c.resize(rhs.size());
+	for (int i = 0; i < c.size(); ++i){
+	  c[i] = rhs[i];
+	}
+
+  }else{
+	
+	MATH::convert(getLinearCon(), A, c);
   }
 }
 

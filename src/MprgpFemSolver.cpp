@@ -117,11 +117,15 @@ void MprgpFemSolver::forward(const double dt){
   for(int i = 0; i < maxIter; i++) {
 
 	buildLinearSystem(LHS_mat, RHS, dt);
+
+	{// save QP
+	  ostringstream oss;
+	  oss << saveResultsTo()+"/QP/qp"<< currentFrame() << ".b";
+	  writeQP(LHS_mat, RHS, getLinearCon(), feasible_pos, oss.str());
+	}
+
 	solve(LHS_mat, RHS, projector, projector_no_con);
-
-	// cout<< "fun: " << (LHS_mat*new_pos-RHS).norm() << endl;
-
-	if (updatePos() < eps) 
+	if (updatePos() < eps)
 	  break;
   }
 }
@@ -451,6 +455,7 @@ void ICAFemSolver::forward(const double dt){
   SparseMatrix<double> J;
   VectorXd c, p;
   collider->getConstraints(J, c, false);
+  INFO_LOG("constraints num: " << c.size());
 
   UTILITY::Timer timer;
   for (int i = 0; i < maxIter; i++) {
@@ -459,26 +464,28 @@ void ICAFemSolver::forward(const double dt){
 
 	//solve for unconstrained x	
 	VectorXd &uncon_x = new_pos;
-	if (use_iterative_solver)
-	  uncon_x = x1;
 	ConjugateGradient<SparseMatrix<double> > cg_solver;
 	uncon_x = cg_solver.compute(LHS_mat).solve(RHS);
 
 	// solve for constrained x
+	ICASolver solver(mprgp_max_it, mprgp_tol);
 	if(c.size() > 0){
 
 	  x1 = uncon_x;
 
-	  ICASolver solver(mprgp_max_it, mprgp_tol);
+	  timer.start();
 	  solver.reset(LHS_mat);
+	  timer.stop("ICA reset time: ");
+
 	  p = c - J*uncon_x;
+	  new_pos.setZero();
 
 	  timer.start();
 	  const bool succ = solver.solve(J, p, new_pos);
 	  ERROR_LOG_COND("ICA is not convergent, (iterations, residual) = " << 
 					 solver.getIterations() << ", " << solver.getResidual(), succ);
-
 	  timer.stop("ICA solving time: ");
+	  INFO_LOG("ICA iterations: "<<solver.getIterations());
 	  // solver.printSolveInfo(LHS_mat, J, p, new_pos);
 	  new_pos += x1;
 	}
