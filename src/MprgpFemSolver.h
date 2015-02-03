@@ -128,4 +128,16 @@ protected:
 
 };
 
+class DecoupledMprgpFemSolver:public MprgpFemSolver{
+
+public:
+  DecoupledMprgpFemSolver(int cOption=2):MprgpFemSolver(cOption){
+	solver_name = "decoupled mprgp";
+  }
+
+protected:
+  void forward(const double dt);
+
+};
+
 #endif /*_MPRGPFEMSOLVER_H_*/

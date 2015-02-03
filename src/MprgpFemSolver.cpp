@@ -495,3 +495,36 @@ void ICAFemSolver::forward(const double dt){
 	  break;
   }
 }
+
+void DecoupledMprgpFemSolver::forward(const double dt){
+  
+  const double eps=_tree.get<double>("eps");
+  const int maxIter=_tree.get<int>("maxIter");
+
+  Vec RHS(nrVar());
+  _LHS.reset(nrVar(),nrVar(),false);
+  _U.reset(nrVarF(),nrVar(),false);
+
+  SparseMatrix<double> J;
+  VectorXd c;
+  collider->getConstraints(J, c, false);
+
+  const SparseMatrix<double> JJt_mat = J*J.transpose();
+  assert_eq_ext(JJt_mat.nonZeros(), J.rows(), "Matrix J is not decoupled.\n" << J);
+  Vec JJt;
+  MATH::getDiagonal(JJt_mat, JJt);
+  DecoupledConProjector<double> projector(J, JJt, c);
+
+  UTILITY::Timer timer;
+  for (int i = 0; i < maxIter; i++) {
+
+	buildLinearSystem(LHS_mat, RHS, dt);
+	new_pos = x1;
+	timer.start();
+	const FixedSparseMatrix<double> A(LHS_mat);
+	MPRGPDecoupledCon<double>::solve(A,RHS,projector,new_pos,mprgp_tol,mprgp_max_it);
+	timer.stop("moseck solving time: ");
+	if (updatePos() < eps)
+	  break;
+  }
+}

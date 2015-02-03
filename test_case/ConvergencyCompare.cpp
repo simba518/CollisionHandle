@@ -32,7 +32,8 @@ BOOST_AUTO_TEST_CASE(test_iterative_solvers){
   if ( loadQP(A, B, planes, init_x, qp) ){
 
 	// analysis matrix A
-	{
+	if(false){
+
 	  VectorXd eig_vec;
 	  double eig_val = 0.0f;
 	  EIGEN3EXT::largestEigen(A,eig_vec,eig_val);
@@ -41,11 +42,16 @@ BOOST_AUTO_TEST_CASE(test_iterative_solvers){
 	  INFO_LOG("smallest eigen value: " << eig_val);
 	}
 
+	// convert constraints
+	SparseMatrix<double> J;
+	VectorXd c;
+	convert(planes, J, c);
+
 	const double tol = 2e-4*B.norm();
 	const int max_it = 10000;
 
-	// mprgp with con
-	if(true){
+	// mprgp with plane con
+	if(false){
 	  VectorXd x = init_x;
 	  PlaneProjector<double> projector(planes, x);
 	  const FixedSparseMatrix<double> FA(A);
@@ -54,16 +60,22 @@ BOOST_AUTO_TEST_CASE(test_iterative_solvers){
 	  MPRGPPlane<double>::checkResult(A, B, projector, x, tol);
 	}
 
-	// ica with con
+	// mprgp with decoupled general con
 	if(true){
+	  VectorXd x = init_x;
+	  const FixedSparseMatrix<double> FA(A);
+	  const int code = MPRGPDecoupledCon<double>::solve(FA, B, J, c, x, tol, max_it, "decoupled mprgp");
+	  ERROR_LOG_COND("MPRGP is not convergent, result code is "<< code << endl, code==0);
+	}
+
+	// ica with con
+	if(false){
 	  ConjugateGradient<SparseMatrix<double> > cg_solver;
 	  timer.start();
 	  const VectorXd uncon_x = cg_solver.compute(A).solve(B);
 	  timer.stop("eigen-cg solving time: ");
 
-	  SparseMatrix<double> J;
-	  VectorXd c, p, x(uncon_x.size());
-	  convert(planes, J, c);
+	  VectorXd p, x(uncon_x.size());
 	  p = c - J*uncon_x;
 
 	  timer.start();
@@ -80,7 +92,7 @@ BOOST_AUTO_TEST_CASE(test_iterative_solvers){
 	}
 
 	// pcg wihout con: solve Ax = B
-	if(true){
+	if(false){
 	  typedef DiagonalPlanePreconSolver<double,FixedSparseMatrix<double>,false>Preconditioner;
 	  typedef FlexiblePCG<double, SparseMatrix<double>, VectorXd, Preconditioner, true> PCG;
 
@@ -111,7 +123,7 @@ BOOST_AUTO_TEST_CASE(test_iterative_solvers){
 	}
 
 	// gs without con
-	if(true){
+	if(false){
 	  GaussSeidel<false> GS(max_it, tol);
 	  timer.start();
 	  GS.setName("gs without con");
@@ -133,7 +145,6 @@ BOOST_AUTO_TEST_CASE(test_iterative_solvers){
 	  // BlockGS.printSolveInfo(A, B, x);
 	  ERROR_LOG_COND("Block GS is not convergent\n", succ);
 	}
-
   }
 }
 
