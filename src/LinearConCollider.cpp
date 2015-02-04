@@ -225,43 +225,8 @@ void VolumeSelfConCache::getConstraints(TRIPS &trips, vector<double> &rhs, const
   /// @todo
 }
 
-bool SurfaceSelfConCache::validConstraints(const boost::shared_ptr<FEMBody> body[5], 
-										   const boost::shared_ptr<FEMVertex> v[5],
-										   const VVVec4d &linear_con, 
-										   const VectorXd &feasible_pos){
-  
-  const int  i = body[0]->_offset/3 + v[0]->_index;
-  if (linear_con[i].size() > 0){
-	return false;
-  }
-
-  const int  j = body[1]->_offset/3 + v[1]->_index;
-  const int  k = body[1]->_offset/3 + v[2]->_index;
-  const int  l = body[1]->_offset/3 + v[3]->_index;
-
-  const Vector3d &vj = v[1]->_pos;
-  const Vector3d &vk = v[2]->_pos;
-  const Vector3d &vl = v[3]->_pos;
-
-  if( (feasible_pos.segment<3>(j*3)-vj).norm() > 1e-9 ){
-	return false;
-  }
-  if( (feasible_pos.segment<3>(k*3)-vk).norm() > 1e-9 ){
-	return false;
-  }
-  if( (feasible_pos.segment<3>(l*3)-vl).norm() > 1e-9 ){
-	return false;
-  }
-
-  return true;
-}
-
 bool SurfaceSelfConCache::handle(boost::shared_ptr<FEMBody> body[5], boost::shared_ptr<FEMVertex> v[5],
 								 const Vec3d coef[5], sizeType nrV, VVVec4d &linear_con, VectorXd &feasible_pos){
-
-  if (!validConstraints(body, v, linear_con, feasible_pos)){
-	return false;
-  }
 
   i = body[0]->_offset/3 + v[0]->_index;
   j = body[1]->_offset/3 + v[1]->_index;
@@ -362,26 +327,52 @@ void SurfaceSelfConCache::getConstraints(TRIPS &trips, vector<double> &rhs, cons
 
 void LinearConCollider::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n){
 
-  GeomConCache one_con;
-  if( one_con.handle(b, v, n, linear_con, feasible_pos) )
-	geom_con.push_back(one_con);
+  const int vert_id = b->_offset/3 + v->_index;
+  if(!collided(vert_id)){
+	GeomConCache one_con;
+	if( one_con.handle(b, v, n, linear_con, feasible_pos) ){
+	  geom_con.push_back(one_con);
+	  coll_as_vert[vert_id] = true;
+	}
+  }
 }
 
 void LinearConCollider::handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,
 							   boost::shared_ptr<FEMBody> bv,boost::shared_ptr<FEMVertex> v,const Vec4& bary){
 
-  VolumeSelfConCache one_con;
-  if ( one_con.handle(bc, c, bv, v, bary, linear_con) ){
-	vol_self_con.push_back(one_con);
+  bool coll = collided(bv->_offset/3 + v->_index);
+  for (int i = 0; (!coll) && i < 4; ++i){
+	coll = collided(bv->_offset/3 + c->_v[i]->_index);
+  }
+  if (!coll){
+	VolumeSelfConCache one_con;
+	if ( one_con.handle(bc, c, bv, v, bary, linear_con) ){
+	  vol_self_con.push_back(one_con);
+	}
+	coll_as_vert[ collided(bv->_offset/3 + v->_index) ] = true;
+	for (int i = 0; i < 4; ++i){
+	  coll_as_vol[bv->_offset/3 + c->_v[i]->_index] = true;
+	}
   }
 }
 
 void LinearConCollider::handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],
 							   const Vec3d coef[5],sizeType nrV) {
-  
-  SurfaceSelfConCache one_con;
-  if ( one_con.handle(b, v, coef, nrV, linear_con, feasible_pos) ){
-	surface_self_con.push_back(one_con);
+
+  const int i = b[0]->_offset/3 + v[0]->_index;
+  const int j = b[1]->_offset/3 + v[1]->_index;
+  const int k = b[1]->_offset/3 + v[2]->_index;
+  const int l = b[1]->_offset/3 + v[3]->_index;
+
+  if( (!collided(i))&& (!collided(j))&& (!collided(k))&& (!collided(l)) ){
+	SurfaceSelfConCache one_con;
+	if ( one_con.handle(b, v, coef, nrV, linear_con, feasible_pos) ){
+	  surface_self_con.push_back(one_con);
+	  coll_as_vert[i] = true;
+	  coll_as_face[j] = true;
+	  coll_as_face[k] = true;
+	  coll_as_face[l] = true;
+	}
   }
 }
 

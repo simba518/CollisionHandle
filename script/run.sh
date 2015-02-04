@@ -5,7 +5,7 @@
 
 # ./bin/release/collision_handle ./data/dino/cylinder.ini  >  tempt/dino_cylinder.txt
 # ./bin/release/collision_handle ./data/dino/ball.ini  >  tempt/dino_ball.txt
-# ./bin/release/collision_handle ./data/dino/selfcon.ini  >  tempt/dino_selfcon.txt
+./bin/release/collision_handle ./data/dino/selfcon.ini  >  tempt/dino_selfcon.txt
 
 # ./bin/release/collision_handle ./data/dragon_asia/stair.ini  >  tempt/dragon_asia_stair.txt
 # ./bin/release/collision_handle ./data/dragon_asia/plane.ini  >  tempt/dragon_asia_plane.txt
@@ -27,6 +27,6 @@
 
 # ./bin/release/collision_handle ./data/cube/selfcon_ica.ini> tempt/cube_selfcon_ica.txt
 # ./bin/release/collision_handle ./data/cube/selfcon_mprgp.ini> tempt/cube_selfcon_mprgp.txt
-./bin/release/collision_handle ./data/cube/selfcon_2cube_ica.ini> tempt/cube_selfcon_2cube_ica.txt
-./bin/release/collision_handle ./data/cube/selfcon_2cube.ini> tempt/cube_selfcon_2cube.txt
+# ./bin/release/collision_handle ./data/cube/selfcon_2cube_ica.ini> tempt/cube_selfcon_2cube_ica.txt
+# ./bin/release/collision_handle ./data/cube/selfcon_2cube.ini> tempt/cube_selfcon_2cube2.txt
 # ./bin/release/collision_handle ./data/cube/selfcon_moseck.ini> tempt/cube_selfcon_moseck.txt

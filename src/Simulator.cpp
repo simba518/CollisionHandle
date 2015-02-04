@@ -324,6 +324,8 @@ void Simulator::run(){
   boost::filesystem::create_directory(saveResultsTo());
   boost::filesystem::create_directory(saveResultsTo()+"/binary/");
   boost::filesystem::create_directory(saveResultsTo()+"/abq/");
+  boost::filesystem::create_directory(saveResultsTo()+"/QP/");
+  boost::filesystem::create_directory(saveResultsTo()+"/collisions/");
 
   fem_solver->getMesh().writeVTK(saveResultsTo()+"/mesh.vtk");
   fem_solver->_geom->writeVTK(saveResultsTo()+"/scene.vtk");

@@ -82,11 +82,6 @@ public:
 
   void getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const;
 
-  static bool validConstraints(const boost::shared_ptr<FEMBody> body[5], 
-							   const boost::shared_ptr<FEMVertex> v[5],
-							   const VVVec4d &linear_con, 
-							   const VectorXd &feasible_pos);
-
 protected:
   bool convertToLinearCon(VVVec4d &linear_con);
   double computeLambda(const double lambda[4])const;
@@ -120,6 +115,15 @@ public:
 	vol_self_con.clear();
 	surface_self_con.clear();
 	all_lambdas.clear();
+
+	coll_as_vert.resize(num_verts);
+	coll_as_vert.assign(num_verts, false);
+
+	coll_as_face.resize(num_verts);
+	coll_as_face.assign(num_verts, false);
+
+	coll_as_vol.resize(num_verts);
+	coll_as_vol.assign(num_verts, false);
   }
 
   void setFriction(double mu_s, double mu_k){
@@ -150,6 +154,13 @@ public:
 
   void print()const;
 
+  bool collided(const int vert_id)const{
+	assert_in(vert_id, 0, coll_as_vert.size()-1);
+	assert_in(vert_id, 0, coll_as_face.size()-1);
+	assert_in(vert_id, 0, coll_as_vol.size()-1);
+	return coll_as_vert[vert_id] || coll_as_face[vert_id] || coll_as_vol[vert_id];
+  }
+
 private:
   VVVec4d linear_con;
   vector<GeomConCache> geom_con;
@@ -159,6 +170,7 @@ private:
   VectorXd &feasible_pos;
   double friction_s;
   double friction_k;
+  vector<bool> coll_as_vert, coll_as_face, coll_as_vol;
 };
 
 #endif /* _LINEARCONCOLLIDER_H_ */

@@ -24,8 +24,6 @@ public:
   void setTargetFold(const string &fold_for_saving_results){
 	save_results_to = fold_for_saving_results;
 	boost::filesystem::create_directory(save_results_to);
-	boost::filesystem::create_directory(save_results_to+"/QP/");
-	boost::filesystem::create_directory(save_results_to+"/collisions/");
   }
 
   virtual void advance(const double dt);

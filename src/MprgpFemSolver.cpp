@@ -58,6 +58,8 @@ void MprgpFemSolver::initPos(const double dt){
 
 void MprgpFemSolver::handleCollDetection(){
 
+  FUNC_TIMER();
+
   feasible_pos = x0;
   collider->reset();
 
@@ -131,6 +133,8 @@ void MprgpFemSolver::forward(const double dt){
 }
 
 void MprgpFemSolver::buildLinearSystem(SparseMatrix<double>&LHS_mat,VectorXd&RHS,const double dt){
+
+  FUNC_TIMER();
 
   _LHS.clear();
   _U.clear();
@@ -519,11 +523,20 @@ void DecoupledMprgpFemSolver::forward(const double dt){
   for (int i = 0; i < maxIter; i++) {
 
 	buildLinearSystem(LHS_mat, RHS, dt);
-	new_pos = x1;
+
+	{// save QP
+	  ostringstream oss;
+	  oss << saveResultsTo()+"/QP/qp"<< currentFrame() << ".b";
+	  writeQP(LHS_mat, RHS, J, c, x1, oss.str());
+	}
+
 	timer.start();
+	projector.project(x1, new_pos);
+	assert(projector.isFeasible(new_pos));
+	timer.stop("time for finding feasible point: ");
+
 	const FixedSparseMatrix<double> A(LHS_mat);
 	MPRGPDecoupledCon<double>::solve(A,RHS,projector,new_pos,mprgp_tol,mprgp_max_it);
-	timer.stop("moseck solving time: ");
 	if (updatePos() < eps)
 	  break;
   }
