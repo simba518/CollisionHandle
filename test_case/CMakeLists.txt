@@ -3,7 +3,11 @@ SET(APPNAME collisionhandle_test)
 AUX_SOURCE_DIRECTORY(. collisionhandle_test_src)
 
 ADD_EXECUTABLE(${APPNAME} 
-  ${collisionhandle_test_src}
+  # ${collisionhandle_test_src}
+  main.cpp
+  ResultsToObj.cpp
+  # ConvergencyCompare.cpp
+  # VtkToAbq.cpp
   )
 
 TARGET_LINK_LIBRARIES( ${APPNAME}

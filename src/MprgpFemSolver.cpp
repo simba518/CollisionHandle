@@ -12,10 +12,10 @@ USE_PRJ_NAMESPACE
 #define BLKL(IN,I) (IN).block(_offVarL[i],0,_offVarL[i+1]-_offVarL[i],1)
 #define BLKF(IN,I) (IN).block(_offVarF[i],0,_offVarF[i+1]-_offVarF[i],1)
 
-MprgpFemSolver::MprgpFemSolver(int cOption):FemSolverExt(cOption){
+MprgpFemSolver::MprgpFemSolver(const int cOption):FemSolverExt(cOption){
 
   solver_name = "MprgpFemSolver";
-  collider = boost::shared_ptr<LinearConCollider>(new LinearConCollider(feasible_pos));
+  collider = boost::shared_ptr<LinearConCollider>(new LinearConCollider(feasible_pos,false));
   mprgp_max_it = 1000;
   mprgp_tol = 1e-4;
 }
@@ -66,14 +66,24 @@ void MprgpFemSolver::handleCollDetection(){
   ostringstream oss3;
   oss3 << saveResultsTo()+"/collisions/coll_"<< currentFrame() << ".vtk";
   DebugFEMCollider coll_debug( oss3.str(), 3 );
-
+  
   for(int i=0; i<_mesh->nrB(); i++){
 	_mesh->getB(i)._system->beforeCollision();
   }
+
+  // collide with the ground
+  if (collide_ground){
+	for(int i=0; i<_mesh->nrB(); i++)
+	  collider->handle( _mesh->getBPtr(i), ground_y, delta_y );
+  }
+
+  // collide with fixed objects
   if(_geom){
 	debug_fun( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
 	_mesh->getColl().collideGeom(*_geom,*collider,true);
   }
+
+  // self collision
   if(_tree.get<bool>("selfColl")){
 	debug_fun( _mesh->getColl().collideMesh(coll_debug, true) );
 	_mesh->getColl().collideMesh(*collider,true);
@@ -428,7 +438,7 @@ void MoseckFemSolver::forward(const double dt){
 
   SparseMatrix<double> A;
   VectorXd c;
-  collider->getConstraints(A, c, false);
+  collider->getConstraints(A, c);
 
   UTILITY::Timer timer;
   for (int i = 0; i < maxIter; i++) {
@@ -437,6 +447,8 @@ void MoseckFemSolver::forward(const double dt){
 	solver.setConstraints(A, c, nrVar());
 
 	buildLinearSystem(LHS_mat, RHS, dt);
+	saveQP(A, c, RHS);
+
 	new_pos = x1;
 	RHS = -RHS;
 	timer.start();
@@ -457,41 +469,35 @@ void ICAFemSolver::forward(const double dt){
   _U.reset(nrVarF(),nrVar(),false);
 
   SparseMatrix<double> J;
-  VectorXd c, p;
-  collider->getConstraints(J, c, false);
+  VectorXd c;
+  collider->getConstraints(J, c);
   INFO_LOG("constraints num: " << c.size());
 
   UTILITY::Timer timer;
   for (int i = 0; i < maxIter; i++) {
 
 	buildLinearSystem(LHS_mat, RHS, dt);
+	saveQP(J, c, RHS);
 
 	//solve for unconstrained x	
-	VectorXd &uncon_x = new_pos;
 	ConjugateGradient<SparseMatrix<double> > cg_solver;
-	uncon_x = cg_solver.compute(LHS_mat).solve(RHS);
+	new_pos = cg_solver.compute(LHS_mat).solve(RHS);
 
 	// solve for constrained x
 	ICASolver solver(mprgp_max_it, mprgp_tol);
 	if(c.size() > 0){
 
-	  x1 = uncon_x;
-
 	  timer.start();
-	  solver.reset(LHS_mat);
+	  solver.reset(LHS_mat, RHS);
 	  timer.stop("ICA reset time: ");
 
-	  p = c - J*uncon_x;
-	  new_pos.setZero();
-
 	  timer.start();
-	  const bool succ = solver.solve(J, p, new_pos);
+	  const bool succ = solver.solve(J, c, new_pos);
 	  ERROR_LOG_COND("ICA is not convergent, (iterations, residual) = " << 
 					 solver.getIterations() << ", " << solver.getResidual(), succ);
 	  timer.stop("ICA solving time: ");
 	  INFO_LOG("ICA iterations: "<<solver.getIterations());
 	  // solver.printSolveInfo(LHS_mat, J, p, new_pos);
-	  new_pos += x1;
 	}
 
 	// cout<< "fun: " << (LHS_mat*new_pos-RHS).norm() << endl;
@@ -511,7 +517,7 @@ void DecoupledMprgpFemSolver::forward(const double dt){
 
   SparseMatrix<double> J;
   VectorXd c;
-  collider->getConstraints(J, c, false);
+  collider->getConstraints(J, c);
 
   const SparseMatrix<double> JJt_mat = J*J.transpose();
   assert_eq_ext(JJt_mat.nonZeros(), J.rows(), "Matrix J is not decoupled.\n" << J);
@@ -523,12 +529,7 @@ void DecoupledMprgpFemSolver::forward(const double dt){
   for (int i = 0; i < maxIter; i++) {
 
 	buildLinearSystem(LHS_mat, RHS, dt);
-
-	{// save QP
-	  ostringstream oss;
-	  oss << saveResultsTo()+"/QP/qp"<< currentFrame() << ".b";
-	  writeQP(LHS_mat, RHS, J, c, x1, oss.str());
-	}
+	saveQP(J, c, RHS);
 
 	timer.start();
 	projector.project(x1, new_pos);
@@ -536,7 +537,7 @@ void DecoupledMprgpFemSolver::forward(const double dt){
 	timer.stop("time for finding feasible point: ");
 
 	const FixedSparseMatrix<double> A(LHS_mat);
-	MPRGPDecoupledCon<double>::solve(A,RHS,projector,new_pos,mprgp_tol,mprgp_max_it);
+	MPRGPDecoupledCon<double>::solve<FixedSparseMatrix<double>, true>(A,RHS,projector,new_pos,mprgp_tol,mprgp_max_it);
 	if (updatePos() < eps)
 	  break;
   }

@@ -315,6 +315,17 @@ void Simulator::init(const string &json_file){
 	}
   }
 
+  // set ground for collision
+  {
+	vector<double> ground_y_delta_y;
+	if( jsonf.read("ground_y_delta_y", ground_y_delta_y) ){
+	  assert_eq(ground_y_delta_y.size(),2);
+	  fem_solver->collideGround(true, ground_y_delta_y[0], ground_y_delta_y[1]);
+	}else{
+	  fem_solver->collideGround(false);
+	}
+  }
+
   DEBUG_LOG("finished to load init file.");
 }
 
@@ -329,6 +340,13 @@ void Simulator::run(){
 
   fem_solver->getMesh().writeVTK(saveResultsTo()+"/mesh.vtk");
   fem_solver->_geom->writeVTK(saveResultsTo()+"/scene.vtk");
+  for (int i = 0; i < fem_solver->_geom->nrG(); ++i){
+	ObjMesh obj_mesh;
+    fem_solver->_geom->getG(i).getMesh(obj_mesh);
+	ostringstream ossm_scene;
+  	ossm_scene << saveResultsTo() << "/scene_" << i << ".obj";
+	obj_mesh.write( boost::filesystem::path(ossm_scene.str()) );
+  }
 
   std::ofstream scene_file(saveResultsTo()+"/binary/scene.b", ios::binary);
   fem_solver->_geom->write(scene_file);

@@ -34,14 +34,14 @@ bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVert
   const int added = addConPlane(linear_con[vert_id], plane);
 
   if(added < 0){
-	// assert_ext(MATH::isFeasible(linear_con[vert_id], x), "x: "<<x.transpose());
 	feasible_pos.segment<3>(vert_id*3) = x;
 	this->vert_id = vert_id;
 	this->plane_id = (int)linear_con[vert_id].size()-1;
 	normal = plane.segment<3>(0);
+	return true;
   }
 
-  return added;
+  return false;
 }
 
 void GeomConCache::addJordanForce(const vector<vector<double> > &all_lambdas, VectorXd &force)const{
@@ -250,12 +250,6 @@ bool SurfaceSelfConCache::handle(boost::shared_ptr<FEMBody> body[5], boost::shar
 
   convertToLinearCon(linear_con);
   feasible_pos.segment<3>(i*3) = x0;
-  assert_eq(linear_con[i].size(), 1);
-
-  // assert_ext(MATH::isFeasible(linear_con[i],x0), "con size: "<<linear_con[i].size());
-  // assert_ext(MATH::isFeasible(linear_con[j],feasible_pos.segment<3>(j*3)), "con size: "<<linear_con[j].size()<< ", j="<<j);
-  // assert_ext(MATH::isFeasible(linear_con[k],feasible_pos.segment<3>(k*3)), "con size: "<<linear_con[k].size()<< ", k="<<k);
-  // assert_ext(MATH::isFeasible(linear_con[l],feasible_pos.segment<3>(l*3)), "con size: "<<linear_con[l].size()<< ", l="<<l);
 
   return true;
 }
@@ -327,12 +321,18 @@ void SurfaceSelfConCache::getConstraints(TRIPS &trips, vector<double> &rhs, cons
 
 void LinearConCollider::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n){
 
-  const int vert_id = b->_offset/3 + v->_index;
-  if(!collided(vert_id)){
+  if (!decouple_constraints){
 	GeomConCache one_con;
-	if( one_con.handle(b, v, n, linear_con, feasible_pos) ){
+	if( one_con.handle(b, v, n, linear_con, feasible_pos) )
 	  geom_con.push_back(one_con);
-	  coll_as_vert[vert_id] = true;
+  }else{
+	const int vert_id = b->_offset/3 + v->_index;
+	if( !collided(vert_id) ){
+	  GeomConCache one_con;
+	  if( one_con.handle(b, v, n, linear_con, feasible_pos) ){
+		geom_con.push_back(one_con);
+		coll_as_vert[vert_id] = true;
+	  }
 	}
   }
 }
@@ -340,18 +340,21 @@ void LinearConCollider::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FE
 void LinearConCollider::handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,
 							   boost::shared_ptr<FEMBody> bv,boost::shared_ptr<FEMVertex> v,const Vec4& bary){
 
-  bool coll = collided(bv->_offset/3 + v->_index);
-  for (int i = 0; (!coll) && i < 4; ++i){
-	coll = collided(bv->_offset/3 + c->_v[i]->_index);
-  }
-  if (!coll){
+  if (!decouple_constraints){
 	VolumeSelfConCache one_con;
-	if ( one_con.handle(bc, c, bv, v, bary, linear_con) ){
+	if ( one_con.handle(bc, c, bv, v, bary, linear_con) )
 	  vol_self_con.push_back(one_con);
-	}
-	coll_as_vert[ collided(bv->_offset/3 + v->_index) ] = true;
-	for (int i = 0; i < 4; ++i){
-	  coll_as_vol[bv->_offset/3 + c->_v[i]->_index] = true;
+  }else{
+	bool coll = collided(bv->_offset/3 + v->_index);
+	for (int i = 0; (!coll) && i < 4; ++i)
+	  coll = collided(bv->_offset/3 + c->_v[i]->_index);
+	if ( !coll ){
+	  VolumeSelfConCache one_con;
+	  if ( one_con.handle(bc, c, bv, v, bary, linear_con) )
+		vol_self_con.push_back(one_con);
+	  coll_as_vert[ collided(bv->_offset/3 + v->_index) ] = true;
+	  for (int i = 0; i < 4; ++i)
+		coll_as_vol[bv->_offset/3 + c->_v[i]->_index] = true;
 	}
   }
 }
@@ -359,19 +362,25 @@ void LinearConCollider::handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<F
 void LinearConCollider::handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],
 							   const Vec3d coef[5],sizeType nrV) {
 
-  const int i = b[0]->_offset/3 + v[0]->_index;
-  const int j = b[1]->_offset/3 + v[1]->_index;
-  const int k = b[1]->_offset/3 + v[2]->_index;
-  const int l = b[1]->_offset/3 + v[3]->_index;
-
-  if( (!collided(i))&& (!collided(j))&& (!collided(k))&& (!collided(l)) ){
+  if (!decouple_constraints){
 	SurfaceSelfConCache one_con;
-	if ( one_con.handle(b, v, coef, nrV, linear_con, feasible_pos) ){
+	if ( one_con.handle(b, v, coef, nrV, linear_con, feasible_pos) )
 	  surface_self_con.push_back(one_con);
-	  coll_as_vert[i] = true;
-	  coll_as_face[j] = true;
-	  coll_as_face[k] = true;
-	  coll_as_face[l] = true;
+  }else {
+	const int i = b[0]->_offset/3 + v[0]->_index;
+	const int j = b[1]->_offset/3 + v[1]->_index;
+	const int k = b[1]->_offset/3 + v[2]->_index;
+	const int l = b[1]->_offset/3 + v[3]->_index;
+	const bool coll = (collided(i))|| (collided(j))|| (collided(k))|| (collided(l));
+	if(!coll){
+	  SurfaceSelfConCache one_con;
+	  if ( one_con.handle(b, v, coef, nrV, linear_con, feasible_pos) ){
+		surface_self_con.push_back(one_con);
+		coll_as_vert[i] = true;
+		coll_as_face[j] = true;
+		coll_as_face[k] = true;
+		coll_as_face[l] = true;
+	  }
 	}
   }
 }
@@ -400,9 +409,7 @@ void LinearConCollider::addFrictionalForce(const VectorXd &vel, VectorXd &force)
 	surface_self_con[i].addFrictionalForce(vel, all_lambdas, force, friction_s, friction_k);
 }
 
-void LinearConCollider::getConstraints(SparseMatrix<double> &A, VectorXd &c, const bool decoupled)const{
-
-  if (!decoupled){
+void LinearConCollider::getConstraints(SparseMatrix<double> &A, VectorXd &c)const{
 
 	TRIPS trips;
 	vector<double> rhs;
@@ -429,15 +436,38 @@ void LinearConCollider::getConstraints(SparseMatrix<double> &A, VectorXd &c, con
 	for (int i = 0; i < c.size(); ++i){
 	  c[i] = rhs[i];
 	}
-
-  }else{
-	
-	MATH::convert(getLinearCon(), A, c);
-  }
 }
 
 void LinearConCollider::print()const{
   
   INFO_LOG("static friction: "<< friction_s);
   INFO_LOG("kinetic friction: "<< friction_k);
+  INFO_LOG("decouple constraints: "<< (decouple_constraints ? "true" : "false"));
+}
+
+void LinearConCollider::handle(boost::shared_ptr<FEMBody> b, const double ground_y, const double delta_y){
+  
+  Vec3d n;
+  n << 0,1,0;
+  Vector4d plane;
+  plane.segment<3>(0) = n;
+  plane[3] = -ground_y;
+
+  for (sizeType i = 0; i < b->nrV(); ++i){
+	boost::shared_ptr<FEMVertex> v = b->getVPtr(i);
+	if (v->_pos[1] - delta_y <= ground_y){
+	  const int vert_id = b->_offset/3 + v->_index;
+	  const int added = GeomConCache::addConPlane(linear_con[vert_id], plane);
+	  if (added >= 0){
+		continue;
+	  }
+	  const int plane_id = linear_con[vert_id].size()-1;
+	  if (!decouple_constraints){
+		geom_con.push_back( GeomConCache(vert_id, plane_id, n) );
+	  }else if ( !collided(vert_id) ){
+		geom_con.push_back( GeomConCache(vert_id, plane_id, n) );
+		coll_as_vert[vert_id] = true;
+	  }
+	}
+  }
 }

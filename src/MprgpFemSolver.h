@@ -11,7 +11,7 @@ USE_PRJ_NAMESPACE
 class FemSolverExt:public FEMSolver{
 	
 public:
-  FemSolverExt(sizeType cOption=2): FEMSolver(3, cOption){
+  FemSolverExt(const sizeType cOption=2): FEMSolver(3, cOption){
 
 	_tree.put<bool>("denseSystem",false);
 	current_frame = 0;
@@ -19,11 +19,17 @@ public:
 	solver_name = "FemSolverExt";
 	debug_coll = false;
 	use_iterative_solver = true;
+	collideGround(false);
   }
   void setVel(const Vector3d &vel, const int body_id);
   void setTargetFold(const string &fold_for_saving_results){
 	save_results_to = fold_for_saving_results;
 	boost::filesystem::create_directory(save_results_to);
+  }
+  void collideGround(const bool coll, const double ground_y=0, const double delta_y=0){
+	this->collide_ground = coll;
+	this->ground_y = ground_y;
+	this->delta_y = delta_y;
   }
 
   virtual void advance(const double dt);
@@ -62,12 +68,14 @@ protected:
   bool debug_coll;
   bool use_iterative_solver;
   SparseMatrix<double> LHS_mat;
+  bool collide_ground;
+  double ground_y, delta_y;
 };
 
 class MprgpFemSolver:public FemSolverExt{
 	
 public:
-  MprgpFemSolver(int cOption=2);
+  MprgpFemSolver(const int cOption=2);
   void advance(const double dt);
   void setLinearSolverParameters(const double mprgp_tol, const int mprgp_it){
 	assert_gt(mprgp_it, 0);
@@ -94,6 +102,11 @@ protected:
   void solve(const SparseMatrix<double> &LHS_mat, VectorXd &RHS, 
 			 PlaneProjector<double> &projector, PlaneProjector<double> &projector_no_con);
   void buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS, const double dt);
+  void saveQP(const SparseMatrix<double> &J,const VectorXd &c,const VectorXd &RHS)const{
+	ostringstream oss;
+	oss << saveResultsTo()+"/QP/qp"<< currentFrame() << ".b";
+	writeQP(LHS_mat, RHS, J, c, x1, oss.str());
+  }
 
 protected:
   boost::shared_ptr<LinearConCollider> collider;
@@ -105,7 +118,7 @@ protected:
 class MoseckFemSolver:public MprgpFemSolver{
 
 public:
-  MoseckFemSolver(int cOption=2):MprgpFemSolver(cOption){
+  MoseckFemSolver(const int cOption=2):MprgpFemSolver(cOption){
 	solver_name = "MoseckFemSolver";
   }
 
@@ -117,7 +130,7 @@ protected:
 class ICAFemSolver:public MprgpFemSolver{
 
 public:
-  ICAFemSolver(int cOption=2):MprgpFemSolver(cOption){
+  ICAFemSolver(const int cOption=2):MprgpFemSolver(cOption){
 	solver_name = "ICAFemSolver";
   }
 
@@ -129,7 +142,8 @@ protected:
 class DecoupledMprgpFemSolver:public MprgpFemSolver{
 
 public:
-  DecoupledMprgpFemSolver(int cOption=2):MprgpFemSolver(cOption){
+  DecoupledMprgpFemSolver(const int cOption=2):MprgpFemSolver(cOption){
+	collider->setDecoupleConstraints(true);
 	solver_name = "decoupled mprgp";
   }
 

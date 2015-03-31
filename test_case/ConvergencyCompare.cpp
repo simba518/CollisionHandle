@@ -14,8 +14,9 @@ BOOST_AUTO_TEST_SUITE(ConvergencyCompare)
 BOOST_AUTO_TEST_CASE(test_iterative_solvers){
   
   const string project_dir = "/home/simba/Workspace/CollisionHandle/";
-  // const string qp = project_dir+"/data/cube/tempt_2cube_mprgp14000/QP/qp6.b";
-  const string qp = project_dir+"/data/dino/tempt_selfcon_mprgp/QP/qp45.b";
+  // const string qp = project_dir+"/data/dino/tempt_cubes/QP/qp85.b";
+  // const string qp = project_dir+"/data/dragon/tempt_selfcon_mprgp/QP/qp60.b";
+  const string qp = project_dir+"/data/longcube/tempt_mprgp/QP/qp20.b";
   
   SparseMatrix<double> A, J;
   VectorXd B, c, init_x;
@@ -44,76 +45,93 @@ BOOST_AUTO_TEST_CASE(test_iterative_solvers){
 
   const double tol = 1e-5*B.norm();
   const int max_it = 10000;
+  VectorXd uncon_x = init_x;
+
+  // un-constrained solving with eigen cg
+  if (false){
+	ConjugateGradient<SparseMatrix<double> > cg_solver;
+	timer.start();
+	uncon_x = cg_solver.compute(A).solve(B);
+	timer.stop("eigen-cg solving time: ");
+  }
 
   // mprgp with decoupled general con
   if(true){
 
-	const SparseMatrix<double> JJt_mat = J*J.transpose();
-	assert_eq_ext(JJt_mat.nonZeros(), J.rows(), "Matrix J is not decoupled.\n" << J);
-	VectorXd JJt;
-	MATH::getDiagonal(JJt_mat, JJt);
-	DecoupledConProjector<double> projector(J, JJt, c);
+  	const SparseMatrix<double> JJt_mat = J*J.transpose();
+  	assert_eq_ext(JJt_mat.nonZeros(), J.rows(), "Matrix J is not decoupled.\n" << J);
+  	VectorXd JJt;
+  	MATH::getDiagonal(JJt_mat, JJt);
+  	DecoupledConProjector<double> projector(J, JJt, c);
 	  
-	VectorXd x;
-	projector.project(init_x, x);
+  	VectorXd x0;
+  	projector.project(init_x, x0);
 
-	typedef FixedSparseMatrix<double> MAT;
-	MAT FA(A);
-	const int code = MPRGPDecoupledCon<double>::solve<MAT,true>(FA, B, J, c, x, tol, max_it, "decoupled mprgp");
-	ERROR_LOG_COND("MPRGP is not convergent, result code is "<< code << endl, code==0);
+  	typedef FixedSparseMatrix<double> MAT;
+  	MAT FA(A);
+
+	// decoupled mprgp with preconditioning
+	if(true){
+	  VectorXd x = x0;
+	  const int code = MPRGPDecoupledCon<double>::solve<MAT,true>(FA, B, J, c, x, tol, max_it, "decoupled mprgp with precond");
+	  ERROR_LOG_COND("MPRGP is not convergent, result code is "<< code << endl, code==0);
+	}
+
+	// decoupled mprgp without preconditioning
+	if(false){
+	  VectorXd x = x0;
+	  const int code = MPRGPDecoupledCon<double>::solve<MAT,false>(FA, B, J, c, x, tol, max_it, "decoupled mprgp no precond");
+	  ERROR_LOG_COND("MPRGP is not convergent, result code is "<< code << endl, code==0);
+	}
+
+	// without constraints
+	if(false){
+	  SparseMatrix<double> J(0, init_x.size());
+	  VectorXd c;
+	  VectorXd x = x0;
+	  const int code = MPRGPDecoupledCon<double>::solve<MAT,true>(FA, B, J, c, x, tol, max_it, "decoupled mprgp without con");
+	  ERROR_LOG_COND("MPRGP is not convergent, result code is "<< code << endl, code==0);
+	}
   }
 
   // ica with con
   if(true){
 
-	ConjugateGradient<SparseMatrix<double> > cg_solver;
-	timer.start();
-	const VectorXd uncon_x = cg_solver.compute(A).solve(B);
-	timer.stop("eigen-cg solving time: ");
-
-	VectorXd p, x(uncon_x.size());
-	p = c - J*uncon_x;
-
-	timer.start();
-	ICASolver ica_solver(max_it, tol);
-	ica_solver.setName("ica with con");
-	ica_solver.reset(A);
-	x.setZero();
-	// x = init_x - uncon_x;
-	const bool succ = ica_solver.solve(J, p, x);
-	timer.stop("ica with con solving time: ");
-	ica_solver.printSolveInfo(A, J, p, x);
-	ERROR_LOG_COND("ICA is not convergent, (iterations, residual) = " << 
-				   ica_solver.getIterations() << ", " << ica_solver.getResidual(), succ);
-  }
-
-  // mprgp wihout con
-  if(false){
-	  
+  	timer.start();
+  	ICASolver ica_solver(max_it, tol);
+  	ica_solver.setName("ica with con");
+  	ica_solver.reset(A,B);
+  	// VectorXd x = init_x;
+  	VectorXd x = uncon_x;
+  	const bool succ = ica_solver.solve(J, c, x);
+  	timer.stop("ica with con solving time: ");
+  	ica_solver.printSolveInfo(A, J, c, x);
+  	ERROR_LOG_COND("ICA is not convergent, (iterations, residual) = " << 
+  				   ica_solver.getIterations() << ", " << ica_solver.getResidual(), succ);
   }
 
   // gs without con
   if(false){
-	GaussSeidel<false> GS(max_it, tol);
-	timer.start();
-	GS.setName("gs without con");
-	GS.reset(A);
-	VectorXd x = init_x;
-	const bool succ = GS.solve(B, x);
-	timer.stop("GS solving time: ");
-	GS.printSolveInfo(A, B, x);
-	ERROR_LOG_COND("GS is not convergent\n", succ);
+  	GaussSeidel<false> GS(max_it, tol);
+  	timer.start();
+  	GS.setName("gs without con");
+  	GS.reset(A);
+  	VectorXd x = init_x;
+  	const bool succ = GS.solve(B, x);
+  	timer.stop("GS solving time: ");
+  	GS.printSolveInfo(A, B, x);
+  	ERROR_LOG_COND("GS is not convergent\n", succ);
   }
 
   // block-gs without con
   if(false){
-	BlockGaussSeidel BlockGS(max_it, tol);
-	BlockGS.setName("block without con");
-	BlockGS.reset(A);
-	VectorXd x = init_x;
-	const bool succ = BlockGS.solve(B, x);
-	// BlockGS.printSolveInfo(A, B, x);
-	ERROR_LOG_COND("Block GS is not convergent\n", succ);
+  	BlockGaussSeidel BlockGS(max_it, tol);
+  	BlockGS.setName("block without con");
+  	BlockGS.reset(A);
+  	VectorXd x = init_x;
+  	const bool succ = BlockGS.solve(B, x);
+  	// BlockGS.printSolveInfo(A, B, x);
+  	ERROR_LOG_COND("Block GS is not convergent\n", succ);
   }
 
 }
