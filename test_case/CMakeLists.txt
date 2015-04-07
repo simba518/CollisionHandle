@@ -5,7 +5,7 @@ AUX_SOURCE_DIRECTORY(. collisionhandle_test_src)
 ADD_EXECUTABLE(${APPNAME} 
   # ${collisionhandle_test_src}
   main.cpp
-  ResultsToObj.cpp
+  # ResultsToObj.cpp
   # ConvergencyCompare.cpp
   # VtkToAbq.cpp
   )

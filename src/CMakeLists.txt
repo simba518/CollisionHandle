@@ -9,8 +9,8 @@ ADD_EXECUTABLE(${APP_NAME}
 TARGET_LINK_LIBRARIES(${APP_NAME}
 
   /home/simba/mosek/7/tools/platform/linux64x86/bin/libmosek64.so
-
   /usr/local/lib/libutility_common.a
+
   ${ELASTIC_SOLVER_LIB}
   ${COMMON_FILE_LIB}
   ${Boost_LIBRARIES}

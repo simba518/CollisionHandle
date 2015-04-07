@@ -98,7 +98,7 @@ BOOST_AUTO_TEST_CASE(ResultsToObj){
 
   saveAsObjFiles("./data/dino/tempt_cubes_test",true,"./data/dino/");
   // saveAsObjFiles("./data/dragon/tempt_stair");
-  // saveAsObjFiles("./data/bunny/tempt_two");
+  // saveAsObjFiles("./data/bunny/tempt_one");
   // saveAsObjFiles("./data/longcube/tempt_ica");
   // saveAsObjFiles("./data/longcube/tempt_ica2");
 }

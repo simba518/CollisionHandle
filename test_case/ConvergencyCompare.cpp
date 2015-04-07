@@ -14,9 +14,10 @@ BOOST_AUTO_TEST_SUITE(ConvergencyCompare)
 BOOST_AUTO_TEST_CASE(test_iterative_solvers){
   
   const string project_dir = "/home/simba/Workspace/CollisionHandle/";
-  // const string qp = project_dir+"/data/dino/tempt_cubes/QP/qp85.b";
+  const string qp = project_dir+"/data/bunny/tempt_one2/QP/qp11.b";
+  // const string qp = project_dir+"/data/dino/tempt_cubes/QP/qp201.b";
   // const string qp = project_dir+"/data/dragon/tempt_selfcon_mprgp/QP/qp60.b";
-  const string qp = project_dir+"/data/longcube/tempt_mprgp/QP/qp20.b";
+  // const string qp = project_dir+"/data/longcube/tempt_mprgp/QP/qp20.b";
   
   SparseMatrix<double> A, J;
   VectorXd B, c, init_x;
@@ -43,7 +44,7 @@ BOOST_AUTO_TEST_CASE(test_iterative_solvers){
 	INFO_LOG("smallest eigen value: " << eig_val);
   }
 
-  const double tol = 1e-5*B.norm();
+  const double tol = 1e-3; // *B.norm()
   const int max_it = 10000;
   VectorXd uncon_x = init_x;
 
@@ -56,7 +57,7 @@ BOOST_AUTO_TEST_CASE(test_iterative_solvers){
   }
 
   // mprgp with decoupled general con
-  if(true){
+  if(false){
 
   	const SparseMatrix<double> JJt_mat = J*J.transpose();
   	assert_eq_ext(JJt_mat.nonZeros(), J.rows(), "Matrix J is not decoupled.\n" << J);
@@ -85,7 +86,7 @@ BOOST_AUTO_TEST_CASE(test_iterative_solvers){
 	}
 
 	// without constraints
-	if(false){
+	if(true){
 	  SparseMatrix<double> J(0, init_x.size());
 	  VectorXd c;
 	  VectorXd x = x0;
@@ -95,7 +96,7 @@ BOOST_AUTO_TEST_CASE(test_iterative_solvers){
   }
 
   // ica with con
-  if(true){
+  if(false){
 
   	timer.start();
   	ICASolver ica_solver(max_it, tol);

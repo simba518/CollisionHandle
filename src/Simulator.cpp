@@ -13,7 +13,14 @@
 using namespace UTILITY;
 USE_PRJ_NAMESPACE
 
-Simulator::Simulator() {}
+Simulator::Simulator() {
+
+  init_file_name = "./";
+  save_results_to = "./";
+  time_step = 0.01;
+  total_frames = 0;
+  invertable = true;
+}
 
 void Simulator::init(const string &json_file){
 
@@ -25,6 +32,7 @@ void Simulator::init(const string &json_file){
   }
 
   int mesh_group_start_index = 0;
+  jsonf.read("invertable", invertable, true);
   
   // set fem solver
   {
@@ -116,7 +124,7 @@ void Simulator::init(const string &json_file){
 			fem_solver->getMesh().getB(body_id)._system.reset(new FEMSystem(fem_solver->getMesh().getB(body_id)));
 			FEMSystem& sys=*(fem_solver->getMesh().getB(body_id)._system);
 			sys.clearEnergy();
-			sys.readEnergy(group_vol_mtl_file[1], MaterialEnergy::COROTATIONAL, true);
+			sys.readEnergy(group_vol_mtl_file[1], MaterialEnergy::COROTATIONAL, invertable);
 
 			// velocity
 			fem_solver->setVel(vel, body_id);
@@ -136,9 +144,9 @@ void Simulator::init(const string &json_file){
 	  FEMSystem& sys=*(fem_solver->getMesh().getB(i)._system);
 	  sys.clearEnergy();
 	  if((int)elastic_mtl_file.size() > i){
-		sys.readEnergy(elastic_mtl_file[i], MaterialEnergy::COROTATIONAL, true);
+		sys.readEnergy(elastic_mtl_file[i], MaterialEnergy::COROTATIONAL, invertable);
 	  }else{
-		sys.addEnergyMaterial(250000.0f, 0.45f, MaterialEnergy::COROTATIONAL, true);
+		sys.addEnergyMaterial(250000.0f, 0.45f, MaterialEnergy::COROTATIONAL, invertable);
 	  }
 	}
 
@@ -354,10 +362,10 @@ void Simulator::run(){
   for (size_t frame = 0; frame < totalFrames(); ++frame){
     
 	INFO_LOG("step: " << frame);
-	ostringstream ossm_bin;
-  	ossm_bin << saveResultsTo() << "/binary/frame_" << frame << ".b";
-	std::ofstream mesh_file(ossm_bin.str(), ios::binary);
-	fem_solver->getMesh().write(mesh_file);
+	// ostringstream ossm_bin;
+  	// ossm_bin << saveResultsTo() << "/binary/frame_" << frame << ".b";
+	// std::ofstream mesh_file(ossm_bin.str(), ios::binary);
+	// fem_solver->getMesh().write(mesh_file);
 
 	ostringstream ossm_vtk;
   	ossm_vtk << saveResultsTo() << "/frame_" << frame << ".vtk";
@@ -379,7 +387,8 @@ void Simulator::print()const{
   INFO_LOG("time step: "<< timeStep());
   INFO_LOG("total frames: "<< totalFrames());
   INFO_LOG("save results to: "<< saveResultsTo());
-  INFO_LOG("init file:" << init_file_name)
+  INFO_LOG("init file:" << init_file_name);
+  INFO_LOG("invertable:" << (invertable ? "true":"false"));
 }
 
 void Simulator::addStair(boost::shared_ptr<FEMGeom> geom, const Vector3d &ext, Vector3d trans,

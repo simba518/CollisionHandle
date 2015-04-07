@@ -40,6 +40,7 @@ private:
   string save_results_to;
   double time_step;
   size_t total_frames;
+  bool invertable;
   boost::shared_ptr<FemSolverExt> fem_solver;
 };
   

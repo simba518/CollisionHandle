@@ -9,8 +9,8 @@ BOOST_AUTO_TEST_SUITE(VtkToAbq)
 
 BOOST_AUTO_TEST_CASE(testfun){
 
-  ifstream in("/home/simba/Workspace/tempt/mesh-data/hex/bunny/orig.tet.vtk");
-  ofstream out("./bunny.abq");
+  ifstream in("/home/simba/Workspace/CollisionHandle/data/octopus/model/octopus.vtk");
+  ofstream out("/home/simba/Workspace/CollisionHandle/data/octopus/model/mesh.abq");
   FEMMeshFormat::VTKToABQ(in,out);
 }
 

@@ -63,9 +63,9 @@ void MprgpFemSolver::handleCollDetection(){
   feasible_pos = x0;
   collider->reset();
 
-  ostringstream oss3;
-  oss3 << saveResultsTo()+"/collisions/coll_"<< currentFrame() << ".vtk";
-  DebugFEMCollider coll_debug( oss3.str(), 3 );
+  // ostringstream oss3;
+  // oss3 << saveResultsTo()+"/collisions/coll_"<< currentFrame() << ".vtk";
+  // DebugFEMCollider coll_debug( oss3.str(), 3 );
   
   for(int i=0; i<_mesh->nrB(); i++){
 	_mesh->getB(i)._system->beforeCollision();
@@ -79,13 +79,13 @@ void MprgpFemSolver::handleCollDetection(){
 
   // collide with fixed objects
   if(_geom){
-	debug_fun( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
+	// debug_fun( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
 	_mesh->getColl().collideGeom(*_geom,*collider,true);
   }
 
   // self collision
   if(_tree.get<bool>("selfColl")){
-	debug_fun( _mesh->getColl().collideMesh(coll_debug, true) );
+	// debug_fun( _mesh->getColl().collideMesh(coll_debug, true) );
 	_mesh->getColl().collideMesh(*collider,true);
   }
 }
@@ -131,9 +131,9 @@ void MprgpFemSolver::forward(const double dt){
 	buildLinearSystem(LHS_mat, RHS, dt);
 
 	{// save QP
-	  ostringstream oss;
-	  oss << saveResultsTo()+"/QP/qp"<< currentFrame() << ".b";
-	  writeQP(LHS_mat, RHS, getLinearCon(), feasible_pos, oss.str());
+	  // ostringstream oss;
+	  // oss << saveResultsTo()+"/QP/qp"<< currentFrame() << ".b";
+	  // writeQP(LHS_mat, RHS, getLinearCon(), feasible_pos, oss.str());
 	}
 
 	solve(LHS_mat, RHS, projector, projector_no_con);
@@ -447,7 +447,7 @@ void MoseckFemSolver::forward(const double dt){
 	solver.setConstraints(A, c, nrVar());
 
 	buildLinearSystem(LHS_mat, RHS, dt);
-	saveQP(A, c, RHS);
+	// saveQP(A, c, RHS);
 
 	new_pos = x1;
 	RHS = -RHS;
@@ -477,7 +477,7 @@ void ICAFemSolver::forward(const double dt){
   for (int i = 0; i < maxIter; i++) {
 
 	buildLinearSystem(LHS_mat, RHS, dt);
-	saveQP(J, c, RHS);
+	// saveQP(J, c, RHS);
 
 	//solve for unconstrained x	
 	ConjugateGradient<SparseMatrix<double> > cg_solver;
@@ -529,7 +529,7 @@ void DecoupledMprgpFemSolver::forward(const double dt){
   for (int i = 0; i < maxIter; i++) {
 
 	buildLinearSystem(LHS_mat, RHS, dt);
-	saveQP(J, c, RHS);
+	// saveQP(J, c, RHS);
 
 	timer.start();
 	projector.project(x1, new_pos);
