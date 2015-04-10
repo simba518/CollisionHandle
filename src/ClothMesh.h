@@ -33,7 +33,7 @@ public:
         //data
         Vec3d _pos,_lastPos,_vel,_pos0;
         scalarD _mass,_weight;
-        sizeType _index;
+	    sizeType _index, body_index, node_id_on_body;
         //for collision detect
         sizeType _type;
         vector<boost::shared_ptr<ClothTriangle> > _oneRing;

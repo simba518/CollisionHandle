@@ -13,6 +13,10 @@
 using namespace UTILITY;
 USE_PRJ_NAMESPACE
 
+#include <MPRGPSolver.h>
+double MATH::ScalarUtil<double>::scalar_max=DBL_MAX;
+double MATH::ScalarUtil<double>::scalar_eps=1E-9;
+
 Simulator::Simulator() {
 
   init_file_name = "./";
@@ -321,6 +325,13 @@ void Simulator::init(const string &json_file){
 		fem_solver->setVel(vel, i);
 	  }
 	}
+
+	string coll_type = "DCD";
+	if( jsonf.read("coll_dect_type",coll_type) && "CCD" == coll_type){
+	  fem_solver->setCollDetectionType(FemSolverExt::CCD);
+	}else{
+	  fem_solver->setCollDetectionType(FemSolverExt::DCD);
+	}
   }
 
   // set ground for collision
@@ -333,6 +344,8 @@ void Simulator::init(const string &json_file){
 	  fem_solver->collideGround(false);
 	}
   }
+
+  fem_solver->init();
 
   DEBUG_LOG("finished to load init file.");
 }

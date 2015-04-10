@@ -2,12 +2,9 @@
 #include <assertext.h>
 #include <FEMMesh.h>
 #include "LinearConCollider.h"
-#include "TetrahedronVertexCon.h"
-#include <ActiveSetQP3D.h>
 USE_PRJ_NAMESPACE
 
-bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,
-						  const Vec3& n, VVVec4d &linear_con, VectorXd &feasible_pos){
+bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n, VVVec4d &linear_con){
 
   if(n.norm() < ScalarUtil<double>::scalar_eps)
 	return false;
@@ -34,7 +31,6 @@ bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVert
   const int added = addConPlane(linear_con[vert_id], plane);
 
   if(added < 0){
-	feasible_pos.segment<3>(vert_id*3) = x;
 	this->vert_id = vert_id;
 	this->plane_id = (int)linear_con[vert_id].size()-1;
 	normal = plane.segment<3>(0);
@@ -42,47 +38,6 @@ bool GeomConCache::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVert
   }
 
   return false;
-}
-
-void GeomConCache::addJordanForce(const vector<vector<double> > &all_lambdas, VectorXd &force)const{
-
-  assert_eq(force.size(), (int)all_lambdas.size()*3);
-  assert_in(vert_id, 0, (int)all_lambdas.size());
-  assert_in(plane_id, 0, (int)all_lambdas[vert_id].size()-1);
-
-  const double lambda = all_lambdas[vert_id][plane_id];
-  force.segment<3>(vert_id*3) += normal*lambda;
-}
-
-void GeomConCache::addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &all_lambdas, 
-									  VectorXd &force, double mu_s, double mu_k)const{
-
-  assert_eq(vel.size(), force.size());
-  assert_eq(force.size(), (int)all_lambdas.size()*3);
-  assert_in(vert_id, 0, (int)all_lambdas.size());
-  assert_in(plane_id, 0, (int)all_lambdas[vert_id].size()-1);
-
-  const double lambda = all_lambdas[vert_id][plane_id];
-  if(lambda <= 0){
-	ERROR_LOG_COND(setprecision(10)<<"lambda should be >= 0, lambda = "<<lambda, (lambda>=0) );
-	return;
-  }
-
-  const Vector3d ft = force.segment<3>(vert_id*3) - normal.dot(force.segment<3>(vert_id*3))*normal;
-  const Vector3d vt = vel.segment<3>(vert_id*3) - normal.dot(vel.segment<3>(vert_id*3))*normal;
-  assert_ge(mu_k, 0.0f);
-  assert_ge(mu_s, 0.0f);
-
-  if(vt.norm() > ScalarUtil<double>::scalar_eps ){
-	const Vector3d fr = ( -min( lambda*mu_k, ft.norm() ) )*vt.normalized();
-	force.segment<3>(vert_id*3) += fr;
-  }else if(ft.norm() > ScalarUtil<double>::scalar_eps){
-	const Vector3d fr = ( -min( lambda*mu_s, ft.norm() ) )*ft.normalized();
-	force.segment<3>(vert_id*3) += fr;
-  }
-
-  /// @todo update velocity
-
 }
 
 int GeomConCache::addConPlane(VVec4d &planes, const Vector4d &p){
@@ -116,117 +71,8 @@ void GeomConCache::getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec
   rhs.push_back(-p);
 }
 
-bool VolumeSelfConCache::handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,boost::shared_ptr<FEMBody> bv,
-						  boost::shared_ptr<FEMVertex> v,const Vec4& bary, VVVec4d &linear_con){
-
-  // compute v[i], d[i]
-  this->v[0] = bv->_offset/3 + v->_index;
-  initial_x.segment<3>(0) = v->_pos;
-  for (int i = 0; i < 4; ++i){
-	this->v[i+1] = bv->_offset/3 + c->_v[i]->_index;
-	d[i] = bv->_offset/3 + c->_v[i]->_matDist;
-	initial_x.segment<3>(i*3+3) = c->_v[i]->_pos;
-  }
-  
-  // convert to linear constraints
-  return convertToLinearCon(linear_con);
-}
-
-double VolumeSelfConCache::fun(const Vector15d &x)const{
-  return TetrahedronVertexCon::functionValue(d, &x[0]);
-}
-
-void VolumeSelfConCache::grad(const Vector15d &x, Vector15d &g)const{
-  TetrahedronVertexCon::gradient(d, &x[0], &g[0]);
-}
-
-void VolumeSelfConCache::findFeasiblePoints(Vector15d &x)const{
-  
-  Matrix<double, 16, 16> A;
-  for (int i = 0; i < 15; ++i){
-    A(i,i) = 1;
-  }
-  A(15,15) = 0;
-
-  Vector16d x_old, x_new, b;
-  x_old.head<15>() = initial_x;
-  b.head<15>() = initial_x;
-
-  Vector15d J;
-  const double tol = 1e-3;
-  const int max_it = 100;
-  for (int i = 0; i < max_it; ++i){
-	grad(x_old.head<15>(), J);
-	A.block<15,1>(1,0) = J;
-	A.block<1,15>(0,1) = J.transpose();
-	b[15] = J.dot(x_old.head<15>()) - fun(x_old.head<15>());
-	x_new = A.lu().solve(b);
-	const double err = (x_new-x_old).norm();
-	if(err <= tol)
-	  break;
-	x_old = x_new;
-  }
-  assert_eq(x_new, x_new);
-  x = x_new.head<15>();
-}
-
-bool VolumeSelfConCache::convertToLinearCon(VVVec4d &linear_con){
-
-  bool added = false;
-  Vector15d x, g;
-  findFeasiblePoints(x);
-  const double f = fun(x);
-  assert_eq(f, f);
-  grad(x,g);
-  assert_eq(g, g);
-  Vector4d plane;
-  for (int i = 0; i < 5; ++i){
-	n[i] = g.segment<3>(i*3);
-	const double norm = n[i].norm();
-	assert_gt(norm, 0);
-	const double pi = (f-n[i].dot(x.segment<3>(i*3)))/norm;
-	n[i] = n[i]/norm;
-	plane.segment<3>(0) = n[i];
-	plane[3] = pi;
-	if( GeomConCache::addConPlane(linear_con[v[i]], plane) < 0){
-	  added = true;
-	  plane_id[i] = (int)linear_con[v[i]].size()-1;
-	}
-  }
-  return added;
-}
-
-double VolumeSelfConCache::computeLambda(const double lambda[5])const{
-
-  return (lambda[0]+lambda[1]+lambda[2]+lambda[3]+lambda[4])/5.0f;
-}
-
-void VolumeSelfConCache::addJordanForce(const vector<vector<double> > &all_lambdas, VectorXd &force)const{
-
-  double lambda[5];
-  for (int i = 0; i < 5; ++i){
-	lambda[i] = all_lambdas[v[0]][plane_id[i]];
-  }
-  const double la = computeLambda(lambda);
-  assert_le(la, 0.0f);
-  for (int i = 0; i < 5; ++i){
-	force.segment<3>(v[i]*3) += la*n[i];
-  }
-}
-
-void VolumeSelfConCache::addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &all_lambdas, 
-									  VectorXd &force, double mu_s, double mu_k)const{
-  
-  /// @todo
-}
-
-void VolumeSelfConCache::getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const{
-  
-  /// @todo
-}
-
 bool SurfaceSelfConCache::handle(boost::shared_ptr<FEMBody> body[5], boost::shared_ptr<FEMVertex> v[5],
-								 const Vec3d coef[5], sizeType nrV, VVVec4d &linear_con, VectorXd &feasible_pos){
+								 const Vec3d coef[5], sizeType nrV, VVVec4d &linear_con){
 
   i = body[0]->_offset/3 + v[0]->_index;
   j = body[1]->_offset/3 + v[1]->_index;
@@ -249,29 +95,8 @@ bool SurfaceSelfConCache::handle(boost::shared_ptr<FEMBody> body[5], boost::shar
   x0 -= (n.dot(x0-vj))*n; /// @bug
 
   convertToLinearCon(linear_con);
-  feasible_pos.segment<3>(i*3) = x0;
 
   return true;
-}
-
-void SurfaceSelfConCache::addJordanForce(const vector<vector<double> > &all_lambdas, VectorXd &force)const{
-  
-  double lambda[4];
-  lambda[0] = all_lambdas[i][pi];
-  lambda[1] = all_lambdas[j][pj];
-  lambda[2] = all_lambdas[k][pk];
-  lambda[3] = all_lambdas[l][pl];
-
-  const Vector3d N = computeLambda(lambda)*n;
-  force.segment<3>(i*3) += N;
-  force.segment<3>(j*3) -= N*a;
-  force.segment<3>(k*3) -= N*b;
-  force.segment<3>(l*3) -= N*c;
-}
-
-void SurfaceSelfConCache::addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, 
-											 VectorXd &force, double mu_s, double mu_k)const{
-  /// @todo
 }
 
 bool SurfaceSelfConCache::convertToLinearCon(VVVec4d &linear_con){
@@ -300,13 +125,6 @@ bool SurfaceSelfConCache::convertToLinearCon(VVVec4d &linear_con){
   return true;
 }
 
-double SurfaceSelfConCache::computeLambda(const double lambda[4])const{
-
-  const double result = (lambda[0]+lambda[1]+lambda[2]+lambda[3])/(1.0f+a+b+c);
-  assert_eq(result, result);
-  return result;
-}
-
 void SurfaceSelfConCache::getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const{
   
   const int row = rhs.size();
@@ -317,132 +135,6 @@ void SurfaceSelfConCache::getConstraints(TRIPS &trips, vector<double> &rhs, cons
 	trips.push_back( Triplet<double,int>(row, l*3+dim, -c*n[dim]) );
   }
   rhs.push_back(0);
-}
-
-void LinearConCollider::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n){
-
-  if (!decouple_constraints){
-	GeomConCache one_con;
-	if( one_con.handle(b, v, n, linear_con, feasible_pos) )
-	  geom_con.push_back(one_con);
-  }else{
-	const int vert_id = b->_offset/3 + v->_index;
-	if( !collided(vert_id) ){
-	  GeomConCache one_con;
-	  if( one_con.handle(b, v, n, linear_con, feasible_pos) ){
-		geom_con.push_back(one_con);
-		coll_as_vert[vert_id] = true;
-	  }
-	}
-  }
-}
-
-void LinearConCollider::handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,
-							   boost::shared_ptr<FEMBody> bv,boost::shared_ptr<FEMVertex> v,const Vec4& bary){
-
-  if (!decouple_constraints){
-	VolumeSelfConCache one_con;
-	if ( one_con.handle(bc, c, bv, v, bary, linear_con) )
-	  vol_self_con.push_back(one_con);
-  }else{
-	bool coll = collided(bv->_offset/3 + v->_index);
-	for (int i = 0; (!coll) && i < 4; ++i)
-	  coll = collided(bv->_offset/3 + c->_v[i]->_index);
-	if ( !coll ){
-	  VolumeSelfConCache one_con;
-	  if ( one_con.handle(bc, c, bv, v, bary, linear_con) )
-		vol_self_con.push_back(one_con);
-	  coll_as_vert[ collided(bv->_offset/3 + v->_index) ] = true;
-	  for (int i = 0; i < 4; ++i)
-		coll_as_vol[bv->_offset/3 + c->_v[i]->_index] = true;
-	}
-  }
-}
-
-void LinearConCollider::handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],
-							   const Vec3d coef[5],sizeType nrV) {
-
-  if (!decouple_constraints){
-	SurfaceSelfConCache one_con;
-	if ( one_con.handle(b, v, coef, nrV, linear_con, feasible_pos) )
-	  surface_self_con.push_back(one_con);
-  }else {
-	const int i = b[0]->_offset/3 + v[0]->_index;
-	const int j = b[1]->_offset/3 + v[1]->_index;
-	const int k = b[1]->_offset/3 + v[2]->_index;
-	const int l = b[1]->_offset/3 + v[3]->_index;
-	const bool coll = (collided(i))|| (collided(j))|| (collided(k))|| (collided(l));
-	if(!coll){
-	  SurfaceSelfConCache one_con;
-	  if ( one_con.handle(b, v, coef, nrV, linear_con, feasible_pos) ){
-		surface_self_con.push_back(one_con);
-		coll_as_vert[i] = true;
-		coll_as_face[j] = true;
-		coll_as_face[k] = true;
-		coll_as_face[l] = true;
-	  }
-	}
-  }
-}
-
-void LinearConCollider::addJordanForce(VectorXd &force)const{
-
-  for(size_t i = 0; i < geom_con.size(); i++)
-	geom_con[i].addJordanForce(all_lambdas, force);
-
-  for(size_t i = 0; i < vol_self_con.size(); i++)
-	vol_self_con[i].addJordanForce(all_lambdas, force);
-
-  for(size_t i = 0; i < surface_self_con.size(); i++)
-	surface_self_con[i].addJordanForce(all_lambdas, force);
-}
-
-void LinearConCollider::addFrictionalForce(const VectorXd &vel, VectorXd &force)const{
-  
-  for(size_t i = 0; i < geom_con.size(); i++)
-	geom_con[i].addFrictionalForce(vel, all_lambdas, force, friction_s, friction_k);
-
-  for(size_t i = 0; i < vol_self_con.size(); i++)
-	vol_self_con[i].addFrictionalForce(vel, all_lambdas, force, friction_s, friction_k);
-
-  for(size_t i = 0; i < surface_self_con.size(); i++)
-	surface_self_con[i].addFrictionalForce(vel, all_lambdas, force, friction_s, friction_k);
-}
-
-void LinearConCollider::getConstraints(SparseMatrix<double> &A, VectorXd &c)const{
-
-	TRIPS trips;
-	vector<double> rhs;
-	trips.reserve(geom_con.size()*3+vol_self_con.size()*15+surface_self_con.size()*12);
-	rhs.reserve(geom_con.size()+vol_self_con.size()+surface_self_con.size());
-
-	for(size_t i = 0; i < geom_con.size(); i++)
-	  geom_con[i].getConstraints(trips, rhs, linear_con);
-
-	for(size_t i = 0; i < vol_self_con.size(); i++)
-	  vol_self_con[i].getConstraints(trips, rhs, linear_con);
-
-	for(size_t i = 0; i < surface_self_con.size(); i++)
-	  surface_self_con[i].getConstraints(trips, rhs, linear_con);
-
-	const int num_var = getLinearCon().size()*3;
-	A.setZero();
-	A.resize(rhs.size(), num_var);
-	A.reserve(trips.size());
-	A.setFromTriplets( trips.begin(), trips.end() );
-	A.makeCompressed();
-  
-	c.resize(rhs.size());
-	for (int i = 0; i < c.size(); ++i){
-	  c[i] = rhs[i];
-	}
-}
-
-void LinearConCollider::print()const{
-  
-  INFO_LOG("static friction: "<< friction_s);
-  INFO_LOG("kinetic friction: "<< friction_k);
-  INFO_LOG("decouple constraints: "<< (decouple_constraints ? "true" : "false"));
 }
 
 void LinearConCollider::handle(boost::shared_ptr<FEMBody> b, const double ground_y, const double delta_y){
@@ -470,4 +162,189 @@ void LinearConCollider::handle(boost::shared_ptr<FEMBody> b, const double ground
 	  }
 	}
   }
+}
+
+void LinearConCollider::handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n){
+
+  if (!decouple_constraints){
+	GeomConCache one_con;
+	if( one_con.handle(b, v, n, linear_con) )
+	  geom_con.push_back(one_con);
+  }else{
+	const int vert_id = b->_offset/3 + v->_index;
+	if( !collided(vert_id) ){
+	  GeomConCache one_con;
+	  if( one_con.handle(b, v, n, linear_con) ){
+		geom_con.push_back(one_con);
+		coll_as_vert[vert_id] = true;
+	  }
+	}
+  }
+}
+
+void LinearConCollider::handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5], const Vec3d coef[5],sizeType nrV) {
+
+  if (!decouple_constraints){
+	SurfaceSelfConCache one_con;
+	if ( one_con.handle(b, v, coef, nrV, linear_con) )
+	  surface_self_con.push_back(one_con);
+  }else {
+	const int i = b[0]->_offset/3 + v[0]->_index;
+	const int j = b[1]->_offset/3 + v[1]->_index;
+	const int k = b[1]->_offset/3 + v[2]->_index;
+	const int l = b[1]->_offset/3 + v[3]->_index;
+	const bool coll = (collided(i))|| (collided(j))|| (collided(k))|| (collided(l));
+	if(!coll){
+	  SurfaceSelfConCache one_con;
+	  if ( one_con.handle(b, v, coef, nrV, linear_con) ){
+		surface_self_con.push_back(one_con);
+		coll_as_vert[i] = true;
+		coll_as_face[j] = true;
+		coll_as_face[k] = true;
+		coll_as_face[l] = true;
+	  }
+	}
+  }
+}
+
+void LinearConCollider::getConstraints(SparseMatrix<double> &A, VectorXd &c)const{
+
+	TRIPS trips;
+	vector<double> rhs;
+	trips.reserve(geom_con.size()*3+surface_self_con.size()*12);
+	rhs.reserve(geom_con.size()+surface_self_con.size());
+
+	for(size_t i = 0; i < geom_con.size(); i++)
+	  geom_con[i].getConstraints(trips, rhs, linear_con);
+
+	for(size_t i = 0; i < surface_self_con.size(); i++)
+	  surface_self_con[i].getConstraints(trips, rhs, linear_con);
+
+	const int num_var = getLinearCon().size()*3;
+	A.setZero();
+	A.resize(rhs.size(), num_var);
+	A.reserve(trips.size());
+	A.setFromTriplets( trips.begin(), trips.end() );
+	A.makeCompressed();
+  
+	c.resize(rhs.size());
+	for (int i = 0; i < c.size(); ++i){
+	  c[i] = rhs[i];
+	}
+}
+
+void LinearConCollider::print()const{
+  
+  INFO_LOG("decouple constraints: "<< (decouple_constraints ? "true" : "false"));
+}
+
+void ContinueCollider::handle(boost::shared_ptr<ClothMesh::ClothVertex> V1,
+							  boost::shared_ptr<ClothMesh::ClothTriangle> T2,
+							  const Vec3d n,const Vec4d& omg,scalarD t){
+
+  if((V1->_lastPos-T2->getV0()->_lastPos).dot(n) < -1e-8){
+	return;///@todo
+  }
+  if(ClothMesh::CLOTH_MESH == V1->_type){
+	const int body_1 = V1->body_index;
+	const int vert_1 = V1->node_id_on_body;
+	if(ClothMesh::CLOTH_MESH == T2->_type){
+	  SurfaceSelfConCache one_con;
+	  one_con.i = V1->node_id_on_body;
+	  one_con.j = T2->getV0()->node_id_on_body;
+	  one_con.k = T2->getV1()->node_id_on_body;
+	  one_con.l = T2->getV2()->node_id_on_body;
+	  const bool coll = (collided(one_con.i))|| (collided(one_con.j))
+		|| (collided(one_con.k))|| (collided(one_con.l));
+	  if(!coll){
+		one_con.a = -omg[1];
+		one_con.b = -omg[2];
+		one_con.c = -omg[3];
+		one_con.n = n;
+		surface_self_con.push_back(one_con);
+		coll_as_vert[one_con.i] = true;
+		coll_as_face[one_con.j] = true;
+		coll_as_face[one_con.k] = true;
+		coll_as_face[one_con.l] = true;
+	  }
+	}else{
+	  const int old_size = (int)geom_con.size();
+	  boost::shared_ptr<FEMBody> b = femmesh.getBPtr(body_1);
+	  boost::shared_ptr<FEMVertex> v = b->getVPtr(vert_1);
+	  LinearConCollider::handle(b,v,n);
+	  if (old_size < (int)geom_con.size()){
+		assert_eq(geom_con[old_size].normal,n);
+		assert_eq(linear_con[vert_1].size(),1);
+		const Vec3d &v1 = T2->getV0()->_pos;
+		const Vec3d &v2 = T2->getV1()->_pos;
+		const Vec3d &v3 = T2->getV2()->_pos;
+		const double a = omg[1];
+		const double b = omg[2];
+		const double c = omg[3];
+		linear_con[vert_1][0][3] = n.dot(v1)*a + n.dot(v2)*b + n.dot(v3)*c;
+	  }
+	}
+  }
+}
+
+void ContinueCollider::init(){
+
+  for (int i = 0; i < deform_surface.size(); ++i){
+    CCD.delMesh(deform_surface[i]);
+  }
+  for (int i = 0; i < scene.size(); ++i){
+    CCD.delMesh(scene[i]);
+  }
+
+  deform_surface.clear();
+  volNodeId_clothId_vertId.clear();
+  scene.clear();
+  for (int bi = 0; bi < femmesh.nrB(); ++bi){
+    const FEMBody &body = femmesh.getB(bi);
+	ObjMeshD obj;
+	body.writeObj(obj);
+	boost::shared_ptr<ClothMesh> cloth = boost::shared_ptr<ClothMesh>( new ClothMesh(obj,ClothMesh::CLOTH_MESH) );
+	deform_surface.push_back(cloth);
+	const vector<int>& vMap=obj.getIG();
+	Vector3i one_map;
+	one_map[1] = bi;
+	for (int vert_id = 0, i = 0; i < vMap.size(); ++i){
+	  if(vMap[i] >= 0){
+		one_map[0] = i;
+		one_map[2] = vMap[i];
+		volNodeId_clothId_vertId.push_back(one_map);
+		assert_eq(cloth->_vss[vMap[i]]->_index, vMap[i]);
+		cloth->_vss[vMap[i]]->body_index = bi;
+		cloth->_vss[vMap[i]]->node_id_on_body = i;
+	  }
+	}
+  }
+  
+  for (int i = 0; i<geom->nrG(); ++i ){
+	ObjMesh obj;
+    geom->getG(i).getMesh(obj);
+	scene.push_back(boost::shared_ptr<ClothMesh>(new ClothMesh(obj,ClothMesh::RIGID_MESH)));
+  }
+
+  for (int i = 0; i < deform_surface.size(); ++i){
+    CCD.addMesh(deform_surface[i]);
+  }
+  for (int i = 0; i < scene.size(); ++i){
+    CCD.addMesh(scene[i]);
+  }
+
+}
+
+void ContinueCollider::collide(const VectorXd &last_pos, const VectorXd &cur_pos){
+
+  for (int i = 0; i < (int)volNodeId_clothId_vertId.size(); ++i){
+	const int node_id = volNodeId_clothId_vertId[i][0];
+	const int cloth_id = volNodeId_clothId_vertId[i][1];
+	const int vert_id = volNodeId_clothId_vertId[i][2];
+	deform_surface[cloth_id]->_vss[vert_id]->_lastPos = last_pos.segment<3>(node_id*3);
+	deform_surface[cloth_id]->_vss[vert_id]->_pos = cur_pos.segment<3>(node_id*3);
+  }
+
+  CCD.collide(*this);
+
 }

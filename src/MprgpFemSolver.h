@@ -9,6 +9,9 @@ using namespace MATH;
 USE_PRJ_NAMESPACE
 
 class FemSolverExt:public FEMSolver{
+
+public:
+  enum COLL_DETECTION_TYPE {DCD, CCD};
 	
 public:
   FemSolverExt(const sizeType cOption=2): FEMSolver(3, cOption){
@@ -20,6 +23,11 @@ public:
 	debug_coll = false;
 	use_iterative_solver = true;
 	collideGround(false);
+	coll_type = DCD;
+  }
+  virtual void init(){}
+  void setCollDetectionType(const COLL_DETECTION_TYPE type){
+	coll_type = type;
   }
   void setVel(const Vector3d &vel, const int body_id);
   void setTargetFold(const string &fold_for_saving_results){
@@ -70,12 +78,18 @@ protected:
   SparseMatrix<double> LHS_mat;
   bool collide_ground;
   double ground_y, delta_y;
+  COLL_DETECTION_TYPE coll_type;
 };
 
 class MprgpFemSolver:public FemSolverExt{
-	
+
 public:
   MprgpFemSolver(const int cOption=2);
+  virtual void init(){
+	FemSolverExt::init();
+	ccd_collider = boost::shared_ptr<ContinueCollider>(new ContinueCollider(this->getMesh(), this->_geom));
+	ccd_collider->init();
+  }
   void advance(const double dt);
   void setLinearSolverParameters(const double mprgp_tol, const int mprgp_it){
 	assert_gt(mprgp_it, 0);
@@ -84,23 +98,27 @@ public:
 	this->mprgp_tol = mprgp_tol;
   }
   void setFriction(const double mu_s, const double mu_k){
-	collider->setFriction(mu_s, mu_k);
+	// collider->setFriction(mu_s, mu_k);
   }
 
-  const VVVec4d &getLinearCon()const{return collider->getLinearCon();}
+  const VVVec4d &getLinearCon()const{return dcd_collider->getLinearCon();}
   void print()const;
 
 protected:
-  virtual void forward(const double dt);
+  virtual void forward(const double dt){
+	ERROR_LOG("undefined function: virtual void MprgpFemSolver::forward(const double dt)");
+  }
+  virtual void forwardWithoutColl(const double dt);
 
   void buildVarOffset();
   void initPos(const double dt);
-  void handleCollDetection();
+  void CCDhandle(const double dt);
+  void DCDhandle();
+  void handleCollDetection(const double dt);
+  void getCollConstraints(SparseMatrix<double> &J, VectorXd &c)const;
   void initVel(const double dt);
   double updatePos();
   void updateMesh(const double dt);
-  void solve(const SparseMatrix<double> &LHS_mat, VectorXd &RHS, 
-			 PlaneProjector<double> &projector, PlaneProjector<double> &projector_no_con);
   void buildLinearSystem(Eigen::SparseMatrix<double> &LHS, VectorXd &RHS, const double dt);
   void saveQP(const SparseMatrix<double> &J,const VectorXd &c,const VectorXd &RHS)const{
 	ostringstream oss;
@@ -109,8 +127,9 @@ protected:
   }
 
 protected:
-  boost::shared_ptr<LinearConCollider> collider;
-  VectorXd x0, x1, X0, X1, PHI, PSI, feasible_pos, new_pos;
+  boost::shared_ptr<LinearConCollider> dcd_collider;
+  boost::shared_ptr<ContinueCollider> ccd_collider;
+  VectorXd x0, x1, X0, X1, PHI, PSI, new_pos;
   double mprgp_tol;
   int mprgp_max_it;
 };
@@ -143,7 +162,7 @@ class DecoupledMprgpFemSolver:public MprgpFemSolver{
 
 public:
   DecoupledMprgpFemSolver(const int cOption=2):MprgpFemSolver(cOption){
-	collider->setDecoupleConstraints(true);
+	dcd_collider->setDecoupleConstraints(true);
 	solver_name = "decoupled mprgp";
   }
 

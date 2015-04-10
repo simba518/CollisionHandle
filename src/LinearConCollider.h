@@ -6,97 +6,65 @@
 #include <eigen3/Eigen/Dense>
 #include <assertext.h>
 #include <MPRGPSolver.h>
+#include <FEMMesh.h>
+#include <FEMGeom.h>
+#include "ClothMesh.h"
+#include "ClothCollision.h"
 using namespace Eigen;
 using namespace std;
 USE_PRJ_NAMESPACE
 
 typedef vector<Vector4d,Eigen::aligned_allocator<Vector4d> > VVec4d;
 typedef vector<VVec4d > VVVec4d;
-typedef Matrix<double,15,1> Vector15d;
-typedef Matrix<double,16,1> Vector16d;
 typedef vector<Triplet<double,int> > TRIPS;
 
-class GeomConCache{
+struct GeomConCache{
   
-public:
   GeomConCache(){
 	vert_id = plane_id = -1;
 	normal.setZero();
   }
+
   GeomConCache(const int vi, const int pi, const Vector3d &n):
 	vert_id(vi), plane_id(pi), normal(n){
 	assert_ge(vi,0);
 	assert_ge(pi,0);
 	assert_in(n.norm(),(1-1e-8),(1+1e-8));
   }
-  bool handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n,
-			  VVVec4d &linear_con, VectorXd &feasible_pos);
-  void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
-  void addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, VectorXd &force, double mu_s, double mu_k)const;
+
+  bool handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n, VVVec4d &linear_con);
 
   void getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const;
   
   static int addConPlane(VVec4d &con_planes, const Vector4d &p);
   
-private:
   int vert_id;
   int plane_id;
   Vector3d normal;
 };
 
-// self collision constraints between a tetrahedron and a vertex.
-class VolumeSelfConCache{
-
-public:
-  bool handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,boost::shared_ptr<FEMBody> bv,
-			  boost::shared_ptr<FEMVertex> v,const Vec4& bary, VVVec4d &linear_con);
-  void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
-  void addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, VectorXd &force, double mu_s, double mu_k)const;
-
-  void getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const;
-
-protected:
-  bool convertToLinearCon(VVVec4d &linear_con);
-  double computeLambda(const double lambda[5])const;
-  void findFeasiblePoints(Vector15d &x)const;
-  double fun(const Vector15d &x)const;
-  void grad(const Vector15d &x, Vector15d &g)const;
-
-private:  
-  Vector15d initial_x;
-  int v[5];
-  double d[4];
-  int plane_id[5];
-  Vector3d n[5];
-};
-
 // self collision constraints between a triangle and a vertex.
 // c = n^t*(xi-a*xj-b*xk-c*xl), where a,b,c is the weight coordinates.
-class SurfaceSelfConCache{
-public:
+struct SurfaceSelfConCache{
+
   SurfaceSelfConCache(){
 	i = j = k = l = -1;
 	a = b = c = -1.0f;
 	n.setZero();
 	x0.setZero();
   }
-  bool handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],
-			  sizeType nrV, VVVec4d &linear_con, VectorXd &feasible_pos);
-  void addJordanForce(const vector<vector<double> > &lambda, VectorXd &force)const;
-  void addFrictionalForce(const VectorXd &vel, const vector<vector<double> > &lambda, 
-						  VectorXd &force, double mu_s, double mu_k)const;
+
+  bool handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV,VVVec4d &linear_con);
 
   void getConstraints(TRIPS &trips, vector<double> &rhs, const VVVec4d &linear_con)const;
 
-protected:
-  bool convertToLinearCon(VVVec4d &linear_con);
-  double computeLambda(const double lambda[4])const;
-
-private:
   int i,j,k,l;
   int pi, pj, pk, pl;
   double a,b,c;
   Vector3d n, x0;
+
+protected:
+  bool convertToLinearCon(VVVec4d &linear_con);
 };
 
 /**
@@ -107,41 +75,26 @@ private:
 class LinearConCollider:public FEMCollider{
   
 public:
-  LinearConCollider(VectorXd &feasible_pos, const bool decouple_con = false)
-	:feasible_pos(feasible_pos), decouple_constraints(decouple_con){
-	setFriction(0.5f, 0.4f);
-	reset();
+  LinearConCollider(const bool decouple_con = false):decouple_constraints(decouple_con){
+	reset(0);
   }
 
-  void reset(){
+  void reset(const size_t num_verts){
 
-	const size_t num_verts = feasible_pos.size()/3;
 	linear_con.clear();
 	linear_con.resize(num_verts);
 	geom_con.clear();
-	vol_self_con.clear();
 	surface_self_con.clear();
-	all_lambdas.clear();
 
 	coll_as_vert.resize(num_verts);
 	coll_as_vert.assign(num_verts, false);
 
 	coll_as_face.resize(num_verts);
 	coll_as_face.assign(num_verts, false);
-
-	coll_as_vol.resize(num_verts);
-	coll_as_vol.assign(num_verts, false);
   }
 
   void setDecoupleConstraints(const bool decouple_con){
 	this->decouple_constraints = decouple_con;
-  }
-
-  void setFriction(double mu_s, double mu_k){
-	assert_ge(mu_k, 0.0f);
-	assert_ge(mu_s, mu_k);
-	friction_s = mu_s;
-	friction_k = mu_k;
   }
 
   void handle(boost::shared_ptr<FEMBody> b, const double ground_y, const double delta_y);
@@ -149,16 +102,6 @@ public:
   void handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV);
 
   void handle(boost::shared_ptr<FEMBody> b,boost::shared_ptr<FEMVertex> v,const Vec3& n);
-
-  void handle(boost::shared_ptr<FEMBody> bc,boost::shared_ptr<FEMCell> c,boost::shared_ptr<FEMBody> bv,boost::shared_ptr<FEMVertex> v,const Vec4& bary);
-
-  void computeAllLambdas(const VectorXd &K_x_f, const vector<vector<int> > &face){
-	MATH::MPRGPPlane<double>::computeLagMultipliers(K_x_f, linear_con, face, all_lambdas);
-  }
-
-  void addJordanForce(VectorXd &force)const;
-
-  void addFrictionalForce(const VectorXd &vel, VectorXd &force)const;
 
   const VVVec4d &getLinearCon()const{return linear_con;}
 
@@ -170,21 +113,36 @@ public:
   bool collided(const int vert_id)const{
 	assert_in(vert_id, 0, coll_as_vert.size()-1);
 	assert_in(vert_id, 0, coll_as_face.size()-1);
-	assert_in(vert_id, 0, coll_as_vol.size()-1);
-	return coll_as_vert[vert_id] || coll_as_face[vert_id] || coll_as_vol[vert_id];
+	return coll_as_vert[vert_id] || coll_as_face[vert_id];
   }
 
-private:
+protected:
   VVVec4d linear_con;
   vector<GeomConCache> geom_con;
-  vector<VolumeSelfConCache> vol_self_con;
   vector<SurfaceSelfConCache> surface_self_con;
-  vector<vector<double> > all_lambdas;
-  VectorXd &feasible_pos;
-  double friction_s;
-  double friction_k;
   bool decouple_constraints; // if true, one constraint for each triangle and each vertex.
-  vector<bool> coll_as_vert, coll_as_face, coll_as_vol;
+  vector<bool> coll_as_vert, coll_as_face;
+};
+
+class ContinueCollider:public LinearConCollider, public ClothCollision::CollisionHandler{
+
+public:
+  ContinueCollider(FEMMesh&mesh,boost::shared_ptr<FEMGeom> geom):
+	LinearConCollider(true),femmesh(mesh),geom(geom){}
+  void init();
+  void collide(const VectorXd &last_pos, const VectorXd &cur_pos);
+
+protected:
+  void handle(boost::shared_ptr<ClothMesh::ClothVertex> V1,
+			  boost::shared_ptr<ClothMesh::ClothTriangle> T2,
+			  const Vec3d n,const Vec4d& omg,scalarD t);
+
+private:
+  FEMMesh &femmesh;
+  boost::shared_ptr<FEMGeom> geom;
+  vector<boost::shared_ptr<ClothMesh> > deform_surface, scene;
+  ClothCollision CCD;
+  vector<Vector3i > volNodeId_clothId_vertId;
 };
 
 #endif /* _LINEARCONCOLLIDER_H_ */

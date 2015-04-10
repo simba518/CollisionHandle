@@ -15,7 +15,7 @@ USE_PRJ_NAMESPACE
 MprgpFemSolver::MprgpFemSolver(const int cOption):FemSolverExt(cOption){
 
   solver_name = "MprgpFemSolver";
-  collider = boost::shared_ptr<LinearConCollider>(new LinearConCollider(feasible_pos,false));
+  dcd_collider = boost::shared_ptr<LinearConCollider>(new LinearConCollider(false));
   mprgp_max_it = 1000;
   mprgp_tol = 1e-4;
 }
@@ -25,8 +25,8 @@ void MprgpFemSolver::advance(const double dt){
   FUNC_TIMER();
   buildVarOffset();
   initPos(dt);
-  handleCollDetection();
   initVel(dt);
+  handleCollDetection(dt);
   forward(dt);
   updateMesh(dt);
   current_frame ++;
@@ -56,12 +56,35 @@ void MprgpFemSolver::initPos(const double dt){
   }
 }
 
-void MprgpFemSolver::handleCollDetection(){
+void MprgpFemSolver::getCollConstraints(SparseMatrix<double> &J, VectorXd &c)const{
+  
+  if (DCD == coll_type){
+	dcd_collider->getConstraints(J,c);
+  }else{
+	ccd_collider->getConstraints(J,c);
+  }
+}
 
-  FUNC_TIMER();
+void MprgpFemSolver::CCDhandle(const double dt){
 
-  feasible_pos = x0;
-  collider->reset();
+  ccd_collider->reset(x0.size()/3);
+  forwardWithoutColl(dt);// compute new_pos
+  ccd_collider->collide(x0, new_pos);
+}
+
+void MprgpFemSolver::forwardWithoutColl(const double dt){
+    
+  Vec RHS(nrVar());
+  _LHS.reset(nrVar(),nrVar(),false);
+  _U.reset(nrVarF(),nrVar(),false);
+  buildLinearSystem(LHS_mat, RHS, dt);
+  ConjugateGradient<SparseMatrix<double> > solver;
+  new_pos = solver.compute(LHS_mat).solve(RHS); //@todo mprgp_tol,mprgp_max_it
+}
+
+void MprgpFemSolver::DCDhandle(){
+
+  dcd_collider->reset(x0.size()/3);
 
   // ostringstream oss3;
   // oss3 << saveResultsTo()+"/collisions/coll_"<< currentFrame() << ".vtk";
@@ -74,19 +97,28 @@ void MprgpFemSolver::handleCollDetection(){
   // collide with the ground
   if (collide_ground){
 	for(int i=0; i<_mesh->nrB(); i++)
-	  collider->handle( _mesh->getBPtr(i), ground_y, delta_y );
+	  dcd_collider->handle( _mesh->getBPtr(i), ground_y, delta_y );
   }
 
   // collide with fixed objects
   if(_geom){
 	// debug_fun( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
-	_mesh->getColl().collideGeom(*_geom,*collider,true);
+	_mesh->getColl().collideGeom(*_geom,*dcd_collider,true);
   }
 
   // self collision
   if(_tree.get<bool>("selfColl")){
 	// debug_fun( _mesh->getColl().collideMesh(coll_debug, true) );
-	_mesh->getColl().collideMesh(*collider,true);
+	_mesh->getColl().collideMesh(*dcd_collider,true);
+  }
+}
+
+void MprgpFemSolver::handleCollDetection(const double dt){
+
+  if(DCD == coll_type){
+	DCDhandle();
+  }else{
+	CCDhandle(dt);
   }
 }
 
@@ -107,38 +139,6 @@ void MprgpFemSolver::initVel(const double dt){
 
 	BLKL(PHI,i)=VB+(1.0f-gamma)*dt*AB;
 	BLKL(PSI,i)=XB+dt*VB+(1.0f-2.0f*beta2)*dt*dt*0.5f*AB;
-  }
-}
-
-void MprgpFemSolver::forward(const double dt){
-
-  const double eps=_tree.get<double>("eps");
-  const int maxIter=_tree.get<int>("maxIter");
-
-  Vec RHS(nrVar());
-  _LHS.reset(nrVar(),nrVar(),false);
-  _U.reset(nrVarF(),nrVar(),false);
-
-  VVVec4d empty_con(nrVar()/3);
-  PlaneProjector<double> projector(getLinearCon(), feasible_pos);
-  PlaneProjector<double> projector_no_con(empty_con, feasible_pos);
-
-  // const bool find_feasible = MATH::findFeasible(getLinearCon(), feasible_pos, true);
-  // assert(find_feasible);
-
-  for(int i = 0; i < maxIter; i++) {
-
-	buildLinearSystem(LHS_mat, RHS, dt);
-
-	{// save QP
-	  // ostringstream oss;
-	  // oss << saveResultsTo()+"/QP/qp"<< currentFrame() << ".b";
-	  // writeQP(LHS_mat, RHS, getLinearCon(), feasible_pos, oss.str());
-	}
-
-	solve(LHS_mat, RHS, projector, projector_no_con);
-	if (updatePos() < eps)
-	  break;
   }
 }
 
@@ -177,37 +177,6 @@ void MprgpFemSolver::buildLinearSystem(SparseMatrix<double>&LHS_mat,VectorXd&RHS
   assert_eq(LHS_mat.rows(), LHS_mat.cols());
   assert_eq(LHS_mat.cols(), x1.size());
   RHS += LHS_mat*x1;
-}
-
-void MprgpFemSolver::solve(const SparseMatrix<double> &LHS_mat, VectorXd &RHS, 
-						   PlaneProjector<double> &projector, 
-						   PlaneProjector<double> &projector_no_con){
-
-  const FixedSparseMatrix<double> A(LHS_mat);
-  if( _tree.get<bool>("selfColl") ){
-
-	// use constraints, no frictional and collision forces.
-	new_pos = feasible_pos;
-	const int rlst_code=MPRGPPlane<double>::solve( A, RHS, projector, new_pos, mprgp_tol, mprgp_max_it);
-	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<rlst_code<<endl,rlst_code==0);
-	debug_fun( MPRGPPlane<double>::checkResult(LHS_mat, RHS, projector, new_pos, mprgp_tol));
-	
-	// compute frictional and collision forces
-	const VectorXd diff = LHS_mat*new_pos-RHS;
-	collider->computeAllLambdas( diff, projector.getFaceIndex() );
-	collider->addJordanForce(RHS);
-	// collider->addFrictionalForce(vel1, RHS); ///@todo no friction.
-
-	// use frictional and collision forces, and no constraints.
-	const int code = MPRGPPlane<double>::solve(A,RHS,projector_no_con,new_pos,mprgp_tol,mprgp_max_it);
-	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<code<<endl,code==0);
-  }else{
-	
-  	new_pos = feasible_pos;
-  	const int code=MPRGPPlane<double>::solve(A,RHS,projector,new_pos,mprgp_tol,mprgp_max_it);
-  	ERROR_LOG_COND("MPRGP is not convergent, result code is "<<code<<endl,code==0);
-  	debug_fun( MPRGPPlane<double>::checkResult(LHS_mat, RHS, projector, new_pos, mprgp_tol));
-  }
 }
 
 double MprgpFemSolver::updatePos(){
@@ -249,7 +218,7 @@ void MprgpFemSolver::print()const{
   FemSolverExt::print();
   INFO_LOG("mprgp it: "<<mprgp_max_it);
   INFO_LOG("mprgp tol: "<<mprgp_tol);
-  collider->print();
+  dcd_collider->print();
 }
 
 void FemSolverExt::setVel(const Vector3d &vel, const int body_id){
@@ -438,7 +407,7 @@ void MoseckFemSolver::forward(const double dt){
 
   SparseMatrix<double> A;
   VectorXd c;
-  collider->getConstraints(A, c);
+  getCollConstraints(A,c);
 
   UTILITY::Timer timer;
   for (int i = 0; i < maxIter; i++) {
@@ -470,7 +439,7 @@ void ICAFemSolver::forward(const double dt){
 
   SparseMatrix<double> J;
   VectorXd c;
-  collider->getConstraints(J, c);
+  getCollConstraints(J,c);
   INFO_LOG("constraints num: " << c.size());
 
   UTILITY::Timer timer;
@@ -517,7 +486,7 @@ void DecoupledMprgpFemSolver::forward(const double dt){
 
   SparseMatrix<double> J;
   VectorXd c;
-  collider->getConstraints(J, c);
+  getCollConstraints(J,c);
 
   const SparseMatrix<double> JJt_mat = J*J.transpose();
   assert_eq_ext(JJt_mat.nonZeros(), J.rows(), "Matrix J is not decoupled.\n" << J);

@@ -173,7 +173,7 @@ void ClothCollision::NarrowNode::buildBVH()
         _mesh->_tss[i]->_activeTag=&_active;
     }
     refit(false);
-    BVHBuilder<Node<sizeType,BBOX>,3>().buildBVH(_bvh);
+    GEOM::BVHBuilder<GEOM::Node<sizeType,BBOX>,3>().buildBVH(_bvh);
     for(sizeType i=nrT; i<(sizeType)_bvh.size(); i++)
         _bvh[i]._cell=-1;
     //refit();
@@ -556,7 +556,7 @@ void ClothCollision::addMesh(boost::shared_ptr<ClothMesh> mesh)
             _bvh[i]=_bvh.back();
             _bvh.pop_back();
         }
-    _bvh.push_back(Node<boost::shared_ptr<NarrowNode>,BBOX>());
+    _bvh.push_back(GEOM::Node<boost::shared_ptr<NarrowNode>,BBOX>());
     _bvh.back()._nrCell=1;
     _bvh.back()._parent=-1;
     _bvh.back()._cell.reset(new NarrowNode);
@@ -574,7 +574,7 @@ void ClothCollision::addMesh(boost::shared_ptr<ClothMesh> mesh)
         }
     }
     //rebuild BVH
-    BVHBuilder<Node<boost::shared_ptr<NarrowNode>,BBOX>,3>().buildBVH(_bvh);
+    GEOM::BVHBuilder<GEOM::Node<boost::shared_ptr<NarrowNode>,BBOX>,3>().buildBVH(_bvh);
 }
 void ClothCollision::delMesh(boost::shared_ptr<ClothMesh> mesh)
 {
@@ -590,7 +590,7 @@ void ClothCollision::delMesh(boost::shared_ptr<ClothMesh> mesh)
             _bvh[i]._cell->refit();
             i++;
         }
-    BVHBuilder<Node<boost::shared_ptr<NarrowNode>,BBOX>,3>().buildBVH(_bvh);
+    GEOM::BVHBuilder<GEOM::Node<boost::shared_ptr<NarrowNode>,BBOX>,3>().buildBVH(_bvh);
 }
 void ClothCollision::collide(CollisionHandler& handler,bool useActive)
 {
@@ -607,7 +607,7 @@ void ClothCollision::collide(CollisionHandler& handler,bool useActive)
 
     //BroadPhase
     _cache.clear();
-    BVHQuery<boost::shared_ptr<NarrowNode>,BBOX> q(_bvh,3,boost::shared_ptr<NarrowNode>());
+    GEOM::BVHQuery<boost::shared_ptr<NarrowNode>,BBOX> q(_bvh,3,boost::shared_ptr<NarrowNode>());
     q.interBodyQuery(q,*this);
     std::sort(_cache.begin(),_cache.end());
     _cache.erase(std::unique(_cache.begin(),_cache.end()),_cache.end());
@@ -642,8 +642,8 @@ void ClothCollision::collide(CollisionHandler& handler,bool useActive)
             }
         }
 #else
-        BVHQuery<sizeType,BBOX> q1(_cache[i]._A->_bvh,3,-1);
-        BVHQuery<sizeType,BBOX> q2(_cache[i]._B->_bvh,3,-1);
+        GEOM::BVHQuery<sizeType,BBOX> q1(_cache[i]._A->_bvh,3,-1);
+        GEOM::BVHQuery<sizeType,BBOX> q2(_cache[i]._B->_bvh,3,-1);
         if(useActive && !_cache[i]._A->_active.empty())
             q1._active=&(_cache[i]._A->_active);
         if(useActive && !_cache[i]._B->_active.empty())
@@ -691,7 +691,7 @@ void ClothCollision::activate(const ClothMesh::ClothVertex* t)
             tag[neigh._index]=true;
     }
 }
-void ClothCollision::onCell(const Node<boost::shared_ptr<NarrowNode>,BBOX>& A,const Node<boost::shared_ptr<NarrowNode>,BBOX>& B)
+void ClothCollision::onCell(const GEOM::Node<boost::shared_ptr<NarrowNode>,BBOX>& A,const GEOM::Node<boost::shared_ptr<NarrowNode>,BBOX>& B)
 {
     bool rigidA=A._cell->_mesh->_vss[0]->_type&ClothMesh::RIGID_MESH;
     bool rigidB=B._cell->_mesh->_vss[0]->_type&ClothMesh::RIGID_MESH;
@@ -719,7 +719,7 @@ static FORCE_INLINE void addColl
              eA->_index != eB->getV2()->_index))
         cacheVT.push_back(ClothCollision::Cache<ClothMesh::ClothVertex,ClothMesh::ClothTriangle>(eA,eB));
 }
-void ClothCollision::onCell(const Node<sizeType,BBOX>& nA,const Node<sizeType,BBOX>& nB)
+void ClothCollision::onCell(const GEOM::Node<sizeType,BBOX>& nA,const GEOM::Node<sizeType,BBOX>& nB)
 {
     const NarrowNode& nodeA=*(_activeCache._A);
     const NarrowNode& nodeB=*(_activeCache._B);

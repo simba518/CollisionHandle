@@ -31,7 +31,7 @@ public:
 		bool operator<(const NarrowNode& other) const;
 		vector<BBOX> _vbb,_ebb;
 		boost::shared_ptr<ClothMesh> _mesh;
-		vector<Node<sizeType,BBOX> > _bvh;
+	    vector<GEOM::Node<sizeType,BBOX> > _bvh;
 		vector<bool> _active;
 	};
 	template <typename TA,typename TB>
@@ -81,11 +81,11 @@ public:
 	void collide(CollisionHandler& handler,bool useActive=false);
 	void restartActive();
 	void activate(const ClothMesh::ClothVertex* t);
-	void onCell(const Node<boost::shared_ptr<NarrowNode>,BBOX>& A,const Node<boost::shared_ptr<NarrowNode>,BBOX>& B);
-	void onCell(const Node<sizeType,BBOX>& nA,const Node<sizeType,BBOX>& nB);
+	void onCell(const GEOM::Node<boost::shared_ptr<NarrowNode>,BBOX>& A,const GEOM::Node<boost::shared_ptr<NarrowNode>,BBOX>& B);
+	void onCell(const GEOM::Node<sizeType,BBOX>& nA,const GEOM::Node<sizeType,BBOX>& nB);
 private:
 	//data
-	vector<Node<boost::shared_ptr<NarrowNode>,BBOX> > _bvh;
+	vector<GEOM::Node<boost::shared_ptr<NarrowNode>,BBOX> > _bvh;
 	vector<Cache<ClothMesh::ClothVertex,ClothMesh::ClothTriangle> > _cacheVT;
 	vector<Cache<ClothMesh::ClothEdge,ClothMesh::ClothEdge> > _cacheEE;
 	vector<Cache<NarrowNode,NarrowNode> > _cache;
