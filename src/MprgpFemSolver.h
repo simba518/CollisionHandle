@@ -165,6 +165,11 @@ public:
 	dcd_collider->setDecoupleConstraints(true);
 	solver_name = "decoupled mprgp";
   }
+  void init(){
+	MprgpFemSolver::init();
+	if(ccd_collider)
+	  ccd_collider->setDecoupleConstraints(true);
+  }
 
 protected:
   void forward(const double dt);

@@ -240,10 +240,12 @@ void LinearConCollider::print()const{
 
 void ContinueCollider::handle(boost::shared_ptr<ClothMesh::ClothVertex> V1,
 							  boost::shared_ptr<ClothMesh::ClothTriangle> T2,
-							  const Vec3d n,const Vec4d& omg,scalarD t){
+							  const Vec3d normal,const Vec4d& omg,scalarD t){
 
-  if((V1->_lastPos-T2->getV0()->_lastPos).dot(n) < -1e-8){
-	return;///@todo
+  // ClothCollision::CollisionHandler::handle(V1,T2,normal,omg,t);
+  Vec3d n = T2->getNormal().normalized();
+  if (n.dot(normal) >= 0){
+	n = normal;
   }
   if(ClothMesh::CLOTH_MESH == V1->_type){
 	const int body_1 = V1->body_index;
@@ -256,7 +258,7 @@ void ContinueCollider::handle(boost::shared_ptr<ClothMesh::ClothVertex> V1,
 	  one_con.l = T2->getV2()->node_id_on_body;
 	  const bool coll = (collided(one_con.i))|| (collided(one_con.j))
 		|| (collided(one_con.k))|| (collided(one_con.l));
-	  if(!coll){
+	  if( (!decouple_constraints) || (!coll) ){
 		one_con.a = -omg[1];
 		one_con.b = -omg[2];
 		one_con.c = -omg[3];
@@ -273,15 +275,50 @@ void ContinueCollider::handle(boost::shared_ptr<ClothMesh::ClothVertex> V1,
 	  boost::shared_ptr<FEMVertex> v = b->getVPtr(vert_1);
 	  LinearConCollider::handle(b,v,n);
 	  if (old_size < (int)geom_con.size()){
-		assert_eq(geom_con[old_size].normal,n);
-		assert_eq(linear_con[vert_1].size(),1);
+		// assert_eq(geom_con[old_size].normal,n);
+		assert_ge(linear_con[vert_1].size(),1);
 		const Vec3d &v1 = T2->getV0()->_pos;
 		const Vec3d &v2 = T2->getV1()->_pos;
 		const Vec3d &v3 = T2->getV2()->_pos;
 		const double a = omg[1];
 		const double b = omg[2];
 		const double c = omg[3];
-		linear_con[vert_1][0][3] = n.dot(v1)*a + n.dot(v2)*b + n.dot(v3)*c;
+		const int k = linear_con[vert_1].size()-1;
+		linear_con[vert_1][k][3] = n.dot(v1)*a + n.dot(v2)*b + n.dot(v3)*c;
+	  }
+	}
+  }
+}
+
+void ContinueCollider::handle(boost::shared_ptr<ClothMesh::ClothEdge> E1,
+							  boost::shared_ptr<ClothMesh::ClothEdge> E2,
+							  const Vec3d normal,const Vec4d& omg,scalarD t){
+
+  Vec3d n = E2->getNormal().normalized();
+  if(n.dot(normal) > 0){
+	n = normal;
+  }
+
+  if(ClothMesh::CLOTH_MESH == E1->_type){
+	if( (ClothMesh::CLOTH_MESH == E2->_type) ){
+	  SurfaceSelfConCache one_con;
+	  one_con.i = E1->_v[0]->node_id_on_body;
+	  one_con.j = E1->_v[1]->node_id_on_body;
+	  one_con.k = E2->_v[0]->node_id_on_body;
+	  one_con.l = E2->_v[1]->node_id_on_body;
+	  const bool coll = (collided(one_con.i))|| (collided(one_con.j))
+	  	|| (collided(one_con.k))|| (collided(one_con.l));
+	  if( (!decouple_constraints) || (!coll) ){
+		assert_gt(abs(omg[0]),1e-8);
+		one_con.a = -(omg[1]/omg[0]);
+		one_con.b = -(omg[2]/omg[0]);
+		one_con.c = -(omg[3]/omg[0]);
+		one_con.n = n;
+		surface_self_con.push_back(one_con);
+		coll_as_vert[one_con.i] = true;
+		coll_as_face[one_con.j] = true;
+		coll_as_face[one_con.k] = true;
+		coll_as_face[one_con.l] = true;
 	  }
 	}
   }

@@ -47,6 +47,11 @@ public:
 		boost::shared_ptr<Serializable> copy() const {
 			return boost::shared_ptr<Serializable>(new ClothEdge);
 		}
+	    Vec3d getNormal()const{
+		  Vec3d n1 = _t[0]->getNormal();
+		  Vec3d n2 = _t[1]->getNormal();
+		  return (n1+n2)*0.5f;
+		}
         //data
         boost::shared_ptr<ClothVertex> _v[2];
         boost::shared_ptr<ClothTriangle> _t[2];
@@ -70,6 +75,12 @@ public:
 		}
 		template <typename T>
 		boost::shared_ptr<T> getElem(sizeType i) const{return _e[i];}
+	    Vec3d getNormal()const{
+		  const Vec3d &p0 = getV0()->_pos;
+		  const Vec3d &p1 = getV1()->_pos;
+		  const Vec3d &p2 = getV2()->_pos;
+		  return (p1-p0).cross(p2-p0);
+		}
 		// template <>
 		// boost::shared_ptr<ClothVertex> getElem(sizeType i) const{
 		// 	if(i == 0)

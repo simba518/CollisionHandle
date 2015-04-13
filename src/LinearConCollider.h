@@ -127,14 +127,18 @@ protected:
 class ContinueCollider:public LinearConCollider, public ClothCollision::CollisionHandler{
 
 public:
-  ContinueCollider(FEMMesh&mesh,boost::shared_ptr<FEMGeom> geom):
-	LinearConCollider(true),femmesh(mesh),geom(geom){}
+  ContinueCollider(FEMMesh&mesh,boost::shared_ptr<FEMGeom> geom,
+				   const bool decouple_con = false):
+	LinearConCollider(decouple_con),femmesh(mesh),geom(geom){}
   void init();
   void collide(const VectorXd &last_pos, const VectorXd &cur_pos);
 
 protected:
   void handle(boost::shared_ptr<ClothMesh::ClothVertex> V1,
 			  boost::shared_ptr<ClothMesh::ClothTriangle> T2,
+			  const Vec3d n,const Vec4d& omg,scalarD t);
+  void handle(boost::shared_ptr<ClothMesh::ClothEdge> E1,
+			  boost::shared_ptr<ClothMesh::ClothEdge> E2,
 			  const Vec3d n,const Vec4d& omg,scalarD t);
 
 private:
