@@ -76,9 +76,9 @@ public:
 		template <typename T>
 		boost::shared_ptr<T> getElem(sizeType i) const{return _e[i];}
 	    Vec3d getNormal()const{
-		  const Vec3d &p0 = getV0()->_pos;
-		  const Vec3d &p1 = getV1()->_pos;
-		  const Vec3d &p2 = getV2()->_pos;
+		  const Vec3d &p0 = getV0()->_lastPos;
+		  const Vec3d &p1 = getV1()->_lastPos;
+		  const Vec3d &p2 = getV2()->_lastPos;
 		  return (p1-p0).cross(p2-p0);
 		}
 		// template <>

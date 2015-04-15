@@ -87,8 +87,10 @@ public:
   MprgpFemSolver(const int cOption=2);
   virtual void init(){
 	FemSolverExt::init();
-	ccd_collider = boost::shared_ptr<ContinueCollider>(new ContinueCollider(this->getMesh(), this->_geom));
-	ccd_collider->init();
+	if (CCD == coll_type){
+	  ccd_collider = boost::shared_ptr<ContinueCollider>(new ContinueCollider(this->getMesh(), this->_geom));
+	  ccd_collider->init();
+	}
   }
   void advance(const double dt);
   void setLinearSolverParameters(const double mprgp_tol, const int mprgp_it){

@@ -30,6 +30,7 @@ public:
 				   const double rad, const double y,
 				   const Vector4d &orient, const Vector3d &trans,
 				   const int slice, const int sliceY)const;
+  bool writeAssembledABQ(const string filename)const;
 
 protected:
   Matrix4d orientToTrans(const Vector4d &orient)const;

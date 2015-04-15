@@ -85,6 +85,7 @@ void Simulator::init(const string &json_file){
 	DEBUG_LOG("load mesh group");
 
 	mesh_group_start_index = fem_solver->getMesh().nrB();
+
 	vector<string> group_vol_mtl_file;
 	vector<double> group_trans_rot_scale_vel;
 	vector<double> group_dx_dy_dz_nx_ny_nz;
@@ -368,6 +369,7 @@ void Simulator::run(){
   	ossm_scene << saveResultsTo() << "/scene_" << i << ".obj";
 	obj_mesh.write( boost::filesystem::path(ossm_scene.str()) );
   }
+  writeAssembledABQ(saveResultsTo()+"/mesh-asembled.abq");
 
   std::ofstream scene_file(saveResultsTo()+"/binary/scene.b", ios::binary);
   fem_solver->_geom->write(scene_file);
@@ -402,6 +404,47 @@ void Simulator::print()const{
   INFO_LOG("save results to: "<< saveResultsTo());
   INFO_LOG("init file:" << init_file_name);
   INFO_LOG("invertable:" << (invertable ? "true":"false"));
+}
+
+bool Simulator::writeAssembledABQ(const string filename)const{
+
+  boost::filesystem::ofstream os(filename);
+
+  // write nodes
+  os << "*NODE" << std::endl;
+  int begin_vindex = 1;
+  for (int bi = 0; bi < fem_solver->getMesh().nrB(); ++bi){
+	const FEMBody &b = fem_solver->getMesh().getB(bi);
+	for (int i = 0; i < (int)b.nrV(); ++i){
+	  os<< std::setprecision(12) << (i+begin_vindex) << ", " <<
+		b.getV(i)._pos[0] << ", " <<
+		b.getV(i)._pos[1] << ", " <<
+		b.getV(i)._pos[2] << std::endl;
+	}
+	begin_vindex += b.nrV();
+  }
+  
+  // write tets
+  os << "*ELEMENT, type=C3D4, ELSET=PART1" << std::endl;
+  int begin_cindex = 1;
+  begin_vindex = 1;
+  for (int bi = 0; bi < fem_solver->getMesh().nrB(); ++bi){
+	const FEMBody &b = fem_solver->getMesh().getB(bi);
+	for (int i = 0; i < (int)b.nrC(); ++i){
+	  os<< (i+begin_cindex) << ", " <<
+		(b.getC(i)._v[0]->_index+begin_vindex) << ", " <<
+		(b.getC(i)._v[1]->_index+begin_vindex) << ", " <<
+		(b.getC(i)._v[2]->_index+begin_vindex) << ", " <<
+		(b.getC(i)._v[3]->_index+begin_vindex) << std::endl;
+	}
+	begin_vindex += b.nrV();
+	begin_cindex += b.nrC();
+  }
+
+  // use same material
+  os << "*ELSET, ELSET=EALL, GENERATE" << std::endl;
+  os << "1, " << begin_cindex-1 << std::endl;
+  return os.good();
 }
 
 void Simulator::addStair(boost::shared_ptr<FEMGeom> geom, const Vector3d &ext, Vector3d trans,

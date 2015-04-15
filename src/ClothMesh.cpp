@@ -151,11 +151,12 @@ void ClothMesh::reset(const ObjMeshD& mesh,MESH_TYPE type)
     typedef map<pair<int,int>,ObjMeshD::Edge,ObjMeshD::EdgeMap::LSS> EMAP;
     ObjMeshD::EdgeMap eMap;
     mesh.buildEdge(eMap);
+
     //edge list
     std::map<pair<int,int>,sizeType> eIdMap;
     sizeType ie=0;
     _ess.resize(eMap._ess.size());
-    for(EMAP::const_iterator beg=eMap._ess.begin(),end=eMap._ess.end(); beg!=end; beg++,ie++) {
+    for(EMAP::const_iterator beg=eMap._ess.begin(),end=eMap._ess.end();beg!=end;beg++,ie++){
         _ess[ie].reset(new ClothEdge(_vss[beg->first.first],_vss[beg->first.second],type));
         eIdMap[beg->first]=ie;
     }

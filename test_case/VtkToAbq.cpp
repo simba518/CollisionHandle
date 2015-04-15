@@ -9,8 +9,8 @@ BOOST_AUTO_TEST_SUITE(VtkToAbq)
 
 BOOST_AUTO_TEST_CASE(testfun){
 
-  ifstream in("/home/simba/Workspace/CollisionHandle/data/octopus/model/octopus.vtk");
-  ofstream out("/home/simba/Workspace/CollisionHandle/data/octopus/model/mesh.abq");
+  ifstream in("/home/simba/Workspace/CollisionHandle/data/dino/tempt_cubes_test/frame_0.vtk");
+  ofstream out("/home/simba/Workspace/CollisionHandle/data/dino/tempt_cubes_test/mesh8.abq");
   FEMMeshFormat::VTKToABQ(in,out);
 }
 

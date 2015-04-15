@@ -144,9 +144,9 @@ protected:
 private:
   FEMMesh &femmesh;
   boost::shared_ptr<FEMGeom> geom;
-  vector<boost::shared_ptr<ClothMesh> > deform_surface, scene;
+  boost::shared_ptr<ClothMesh> surface, scene;
   ClothCollision CCD;
-  vector<Vector3i > volNodeId_clothId_vertId;
+  vector<pair<int,int> > vol_cloth_map;
 };
 
 #endif /* _LINEARCONCOLLIDER_H_ */

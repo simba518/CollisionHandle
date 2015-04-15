@@ -244,21 +244,36 @@ void ContinueCollider::handle(boost::shared_ptr<ClothMesh::ClothVertex> V1,
 
   // ClothCollision::CollisionHandler::handle(V1,T2,normal,omg,t);
   Vec3d n = T2->getNormal().normalized();
-  if (n.dot(normal) >= 0){
-	n = normal;
+  if (ClothMesh::CLOTH_MESH == T2->_type){
+  	n = -n;
+  }
+  if (n.dot(normal) > 0){
+  	n = normal;
+  }else{
+	return;
   }
   if(ClothMesh::CLOTH_MESH == V1->_type){
+
 	const int body_1 = V1->body_index;
 	const int vert_1 = V1->node_id_on_body;
+	boost::shared_ptr<FEMBody> body = femmesh.getBPtr(body_1);
 	if(ClothMesh::CLOTH_MESH == T2->_type){
+
+	  const int body_2 = T2->getV0()->body_index;
+	  boost::shared_ptr<FEMBody> body2 = femmesh.getBPtr(body_2);
+
 	  SurfaceSelfConCache one_con;
-	  one_con.i = V1->node_id_on_body;
-	  one_con.j = T2->getV0()->node_id_on_body;
-	  one_con.k = T2->getV1()->node_id_on_body;
-	  one_con.l = T2->getV2()->node_id_on_body;
+	  one_con.i = V1->node_id_on_body+body->_offset/3;
+	  one_con.j = T2->getV0()->node_id_on_body+body2->_offset/3;
+	  one_con.k = T2->getV1()->node_id_on_body+body2->_offset/3;
+	  one_con.l = T2->getV2()->node_id_on_body+body2->_offset/3;
+
 	  const bool coll = (collided(one_con.i))|| (collided(one_con.j))
 		|| (collided(one_con.k))|| (collided(one_con.l));
+
 	  if( (!decouple_constraints) || (!coll) ){
+
+		assert_in(omg[0],1.0f-1e-9,1.0f+1e-9);
 		one_con.a = -omg[1];
 		one_con.b = -omg[2];
 		one_con.c = -omg[3];
@@ -271,20 +286,20 @@ void ContinueCollider::handle(boost::shared_ptr<ClothMesh::ClothVertex> V1,
 	  }
 	}else{
 	  const int old_size = (int)geom_con.size();
-	  boost::shared_ptr<FEMBody> b = femmesh.getBPtr(body_1);
-	  boost::shared_ptr<FEMVertex> v = b->getVPtr(vert_1);
-	  LinearConCollider::handle(b,v,n);
+	  boost::shared_ptr<FEMVertex> v = body->getVPtr(vert_1);
+	  LinearConCollider::handle(body,v,n);
 	  if (old_size < (int)geom_con.size()){
-		// assert_eq(geom_con[old_size].normal,n);
-		assert_ge(linear_con[vert_1].size(),1);
 		const Vec3d &v1 = T2->getV0()->_pos;
 		const Vec3d &v2 = T2->getV1()->_pos;
 		const Vec3d &v3 = T2->getV2()->_pos;
 		const double a = omg[1];
 		const double b = omg[2];
 		const double c = omg[3];
-		const int k = linear_con[vert_1].size()-1;
-		linear_con[vert_1][k][3] = n.dot(v1)*a + n.dot(v2)*b + n.dot(v3)*c;
+		const int lid = body->_offset/3+vert_1;
+		assert_in(lid,0,linear_con.size());
+		assert_ge(linear_con[lid].size(),1);
+		const int k = linear_con[lid].size()-1;
+		linear_con[lid][k][3] = n.dot(v1)*a + n.dot(v2)*b + n.dot(v3)*c;
 	  }
 	}
   }
@@ -294,18 +309,33 @@ void ContinueCollider::handle(boost::shared_ptr<ClothMesh::ClothEdge> E1,
 							  boost::shared_ptr<ClothMesh::ClothEdge> E2,
 							  const Vec3d normal,const Vec4d& omg,scalarD t){
 
+  // ClothCollision::CollisionHandler::handle(E1,E2,normal,omg,t);
+
   Vec3d n = E2->getNormal().normalized();
+  if (ClothMesh::CLOTH_MESH == E2->_type){
+	n = -n;
+  }
   if(n.dot(normal) > 0){
 	n = normal;
+  }else{
+	return;
   }
 
   if(ClothMesh::CLOTH_MESH == E1->_type){
 	if( (ClothMesh::CLOTH_MESH == E2->_type) ){
+
+	  const int body_1 = E1->_v[0]->body_index;
+	  const int body_2 = E2->_v[0]->body_index;
+	  assert_eq(body_1, E1->_v[1]->body_index);
+	  assert_eq(body_2, E2->_v[1]->body_index);
+	  boost::shared_ptr<FEMBody> b1 = femmesh.getBPtr(body_1);
+	  boost::shared_ptr<FEMBody> b2 = femmesh.getBPtr(body_2);
+
 	  SurfaceSelfConCache one_con;
-	  one_con.i = E1->_v[0]->node_id_on_body;
-	  one_con.j = E1->_v[1]->node_id_on_body;
-	  one_con.k = E2->_v[0]->node_id_on_body;
-	  one_con.l = E2->_v[1]->node_id_on_body;
+	  one_con.i = E1->_v[0]->node_id_on_body+b1->_offset/3;
+	  one_con.j = E1->_v[1]->node_id_on_body+b1->_offset/3;
+	  one_con.k = E2->_v[0]->node_id_on_body+b2->_offset/3;
+	  one_con.l = E2->_v[1]->node_id_on_body+b2->_offset/3;
 	  const bool coll = (collided(one_con.i))|| (collided(one_con.j))
 	  	|| (collided(one_con.k))|| (collided(one_con.l));
 	  if( (!decouple_constraints) || (!coll) ){
@@ -314,6 +344,8 @@ void ContinueCollider::handle(boost::shared_ptr<ClothMesh::ClothEdge> E1,
 		one_con.b = -(omg[2]/omg[0]);
 		one_con.c = -(omg[3]/omg[0]);
 		one_con.n = n;
+		if (omg[0] < 0)
+		  one_con.n *= -1;
 		surface_self_con.push_back(one_con);
 		coll_as_vert[one_con.i] = true;
 		coll_as_face[one_con.j] = true;
@@ -326,60 +358,78 @@ void ContinueCollider::handle(boost::shared_ptr<ClothMesh::ClothEdge> E1,
 
 void ContinueCollider::init(){
 
-  for (int i = 0; i < deform_surface.size(); ++i){
-    CCD.delMesh(deform_surface[i]);
-  }
-  for (int i = 0; i < scene.size(); ++i){
-    CCD.delMesh(scene[i]);
-  }
+  CCD.delMesh(surface);
+  CCD.delMesh(scene);
+  vol_cloth_map.clear();
 
-  deform_surface.clear();
-  volNodeId_clothId_vertId.clear();
-  scene.clear();
+  ObjMeshD surface_obj;
+  vector<vector<int> > vMaps;
   for (int bi = 0; bi < femmesh.nrB(); ++bi){
     const FEMBody &body = femmesh.getB(bi);
 	ObjMeshD obj;
 	body.writeObj(obj);
-	boost::shared_ptr<ClothMesh> cloth = boost::shared_ptr<ClothMesh>( new ClothMesh(obj,ClothMesh::CLOTH_MESH) );
-	deform_surface.push_back(cloth);
-	const vector<int>& vMap=obj.getIG();
-	Vector3i one_map;
-	one_map[1] = bi;
-	for (int vert_id = 0, i = 0; i < vMap.size(); ++i){
+	ostringstream group;
+	group << "surface_obj" << bi;
+	surface_obj.addMesh(obj,group.str());
+	vMaps.push_back(obj.getIG());
+  }
+  surface_obj.smooth();
+  surface = boost::shared_ptr<ClothMesh>( new ClothMesh(surface_obj,ClothMesh::CLOTH_MESH) );
+  {
+	ObjMeshD mesh;
+	surface->convertC2Obj(mesh);
+	mesh.write("tempt_surface.obj");
+  }
+
+  pair<int,int> one_map;
+  int vol_begin = 0;
+  int cloth_begin = 0;
+  for (int bi = 0; bi < vMaps.size(); ++bi){
+
+	const vector<int>& vMap = vMaps[bi];
+	int obj_size = 0;
+	for (int i = 0; i < vMap.size(); ++i){
 	  if(vMap[i] >= 0){
-		one_map[0] = i;
-		one_map[2] = vMap[i];
-		volNodeId_clothId_vertId.push_back(one_map);
-		assert_eq(cloth->_vss[vMap[i]]->_index, vMap[i]);
-		cloth->_vss[vMap[i]]->body_index = bi;
-		cloth->_vss[vMap[i]]->node_id_on_body = i;
+		obj_size ++;
+		one_map.first = i+vol_begin;
+		one_map.second = vMap[i]+cloth_begin;
+		vol_cloth_map.push_back(one_map);
+		surface->_vss[one_map.second]->body_index = bi;
+		surface->_vss[one_map.second]->node_id_on_body = i;
 	  }
 	}
+	vol_begin += vMap.size();
+	cloth_begin += obj_size;
   }
-  
+
+  ObjMeshD scene_obj;
   for (int i = 0; i<geom->nrG(); ++i ){
 	ObjMesh obj;
     geom->getG(i).getMesh(obj);
-	scene.push_back(boost::shared_ptr<ClothMesh>(new ClothMesh(obj,ClothMesh::RIGID_MESH)));
+	ostringstream group;
+	group << "scene_obj" << i;
+	scene_obj.addMesh(obj,group.str());
+  }
+  scene_obj.smooth();
+  scene = boost::shared_ptr<ClothMesh>(new ClothMesh(scene_obj,ClothMesh::RIGID_MESH));
+  {
+	ObjMeshD mesh;
+	scene->convertC2Obj(mesh);
+	mesh.write("tempt_scene.obj");
   }
 
-  for (int i = 0; i < deform_surface.size(); ++i){
-    CCD.addMesh(deform_surface[i]);
-  }
-  for (int i = 0; i < scene.size(); ++i){
-    CCD.addMesh(scene[i]);
-  }
 
+  CCD.addMesh(surface);
+  CCD.addMesh(scene);
 }
 
 void ContinueCollider::collide(const VectorXd &last_pos, const VectorXd &cur_pos){
 
-  for (int i = 0; i < (int)volNodeId_clothId_vertId.size(); ++i){
-	const int node_id = volNodeId_clothId_vertId[i][0];
-	const int cloth_id = volNodeId_clothId_vertId[i][1];
-	const int vert_id = volNodeId_clothId_vertId[i][2];
-	deform_surface[cloth_id]->_vss[vert_id]->_lastPos = last_pos.segment<3>(node_id*3);
-	deform_surface[cloth_id]->_vss[vert_id]->_pos = cur_pos.segment<3>(node_id*3);
+  for (int i = 0; i < (int)vol_cloth_map.size(); ++i){
+	const int vert_id = vol_cloth_map[i].second;
+	const int node_id = vol_cloth_map[i].first;
+	surface->_vss[vert_id]->_lastPos = last_pos.segment<3>(node_id*3);
+	surface->_vss[vert_id]->_pos = cur_pos.segment<3>(node_id*3);
   }
 
   CCD.collide(*this);
