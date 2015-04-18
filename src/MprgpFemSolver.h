@@ -22,8 +22,8 @@ public:
 	solver_name = "FemSolverExt";
 	debug_coll = false;
 	use_iterative_solver = true;
-	collideGround(false);
 	coll_type = DCD;
+	setFriction(0.1f);
   }
   virtual void init(){}
   void setCollDetectionType(const COLL_DETECTION_TYPE type){
@@ -34,15 +34,18 @@ public:
 	save_results_to = fold_for_saving_results;
 	boost::filesystem::create_directory(save_results_to);
   }
-  void collideGround(const bool coll, const double ground_y=0, const double delta_y=0){
-	this->collide_ground = coll;
-	this->ground_y = ground_y;
-	this->delta_y = delta_y;
+  void setCollidePlanes(const VVec4d &planes, const vector<double> &delta_plane){
+	assert_eq( planes.size(), delta_plane.size() );
+	this->planes = planes;
+	this->delta_plane = delta_plane;
   }
 
   virtual void advance(const double dt);
   virtual void setLinearSolverParameters(const double mprgp_tol, const int mprgp_it){}
-  virtual void setFriction(const double mu_s, const double mu_k){}
+  virtual void setFriction(const double mu){
+	assert_ge(mu, 0.0f);
+	friction_mu = mu;
+  }
 
   const string &saveResultsTo()const{
 	return save_results_to;
@@ -76,9 +79,10 @@ protected:
   bool debug_coll;
   bool use_iterative_solver;
   SparseMatrix<double> LHS_mat;
-  bool collide_ground;
-  double ground_y, delta_y;
+  VVec4d planes;
+  vector<double> delta_plane;
   COLL_DETECTION_TYPE coll_type;
+  double friction_mu;
 };
 
 class MprgpFemSolver:public FemSolverExt{
@@ -99,18 +103,18 @@ public:
 	this->mprgp_max_it = mprgp_it;
 	this->mprgp_tol = mprgp_tol;
   }
-  void setFriction(const double mu_s, const double mu_k){
-	// collider->setFriction(mu_s, mu_k);
-  }
 
   const VVVec4d &getLinearCon()const{return dcd_collider->getLinearCon();}
   void print()const;
+  bool collided(const int vert_id)const;
 
 protected:
   virtual void forward(const double dt){
 	ERROR_LOG("undefined function: virtual void MprgpFemSolver::forward(const double dt)");
   }
   virtual void forwardWithoutColl(const double dt);
+  void computeFrictionForces(const VectorXd &RHS, const VectorXd &last_pos, 
+							 const VectorXd &cur_pos, const double dt);
 
   void buildVarOffset();
   void initPos(const double dt);
@@ -131,7 +135,7 @@ protected:
 protected:
   boost::shared_ptr<LinearConCollider> dcd_collider;
   boost::shared_ptr<ContinueCollider> ccd_collider;
-  VectorXd x0, x1, X0, X1, PHI, PSI, new_pos;
+  VectorXd x0, x1, X0, X1, PHI, PSI, new_pos, friction_forces;
   double mprgp_tol;
   int mprgp_max_it;
 };

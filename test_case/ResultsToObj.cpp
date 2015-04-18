@@ -79,6 +79,9 @@ void saveAsObjFiles(const string m_path,const bool interp=false,const string mod
 		//   continue;
 		const string abq_file = abq_fold+file_name;
 		const string obj_file = obj_fold+file_name.substr(0,file_name.size()-3)+"obj";
+		if (boost::filesystem::exists(obj_file)){
+		  continue;
+		}
 		cout << abq_file << endl;
 		cout << obj_file << endl;
 		if (!interp){
@@ -96,9 +99,9 @@ BOOST_AUTO_TEST_SUITE(ResultsToObj)
 
 BOOST_AUTO_TEST_CASE(ResultsToObj){
 
-  saveAsObjFiles("./data/dino/tempt_cubes_test",true,"./data/dino/");
+  // saveAsObjFiles("./data/dino/tempt_cubes_test",true,"./data/dino/");
   // saveAsObjFiles("./data/dragon/tempt_stair");
-  // saveAsObjFiles("./data/bunny/tempt_one");
+  // saveAsObjFiles("./data/bunny/tempt_one2");
   // saveAsObjFiles("./data/longcube/tempt_ica");
   // saveAsObjFiles("./data/longcube/tempt_ica2");
 }

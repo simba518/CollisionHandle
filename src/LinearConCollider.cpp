@@ -137,17 +137,13 @@ void SurfaceSelfConCache::getConstraints(TRIPS &trips, vector<double> &rhs, cons
   rhs.push_back(0);
 }
 
-void LinearConCollider::handle(boost::shared_ptr<FEMBody> b, const double ground_y, const double delta_y){
+void LinearConCollider::handle(boost::shared_ptr<FEMBody> b, const Vector4d &plane, const double delta){
   
-  Vec3d n;
-  n << 0,1,0;
-  Vector4d plane;
-  plane.segment<3>(0) = n;
-  plane[3] = -ground_y;
-
-  for (sizeType i = 0; i < b->nrV(); ++i){
-	boost::shared_ptr<FEMVertex> v = b->getVPtr(i);
-	if (v->_pos[1] - delta_y <= ground_y){
+  for (int i = 0; i < (int)b->nrV(); ++i){
+	const boost::shared_ptr<FEMVertex> v = b->getVPtr(i);
+	const Vec3d n = plane.segment<3>(0);
+	assert_in( n.norm(), 1-1e-8, 1+1e-8 );
+	if (n.dot(v->_pos)+plane[3]-delta <= 0){
 	  const int vert_id = b->_offset/3 + v->_index;
 	  const int added = GeomConCache::addConPlane(linear_con[vert_id], plane);
 	  if (added >= 0){
@@ -236,6 +232,15 @@ void LinearConCollider::getConstraints(SparseMatrix<double> &A, VectorXd &c)cons
 void LinearConCollider::print()const{
   
   INFO_LOG("decouple constraints: "<< (decouple_constraints ? "true" : "false"));
+}
+
+void LinearConCollider::project(Vec3d &v, const int vert_id)const{
+
+  assert_in(vert_id, 0, linear_con.size());
+  if(linear_con[vert_id].size() > 0){
+	const Vec3d n = linear_con[vert_id][0].segment<3>(0);
+	v -= v.dot(n)*n;
+  }
 }
 
 void ContinueCollider::handle(boost::shared_ptr<ClothMesh::ClothVertex> V1,

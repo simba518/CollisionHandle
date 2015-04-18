@@ -18,6 +18,7 @@ typedef vector<Vector4d,Eigen::aligned_allocator<Vector4d> > VVec4d;
 typedef vector<VVec4d > VVVec4d;
 typedef vector<Triplet<double,int> > TRIPS;
 
+// n^t*x+p>= 0
 struct GeomConCache{
   
   GeomConCache(){
@@ -97,7 +98,7 @@ public:
 	this->decouple_constraints = decouple_con;
   }
 
-  void handle(boost::shared_ptr<FEMBody> b, const double ground_y, const double delta_y);
+  void handle(boost::shared_ptr<FEMBody> b, const Vector4d &plane, const double delta);
 
   void handle(boost::shared_ptr<FEMBody> b[5],boost::shared_ptr<FEMVertex> v[5],const Vec3d coef[5],sizeType nrV);
 
@@ -115,6 +116,8 @@ public:
 	assert_in(vert_id, 0, coll_as_face.size()-1);
 	return coll_as_vert[vert_id] || coll_as_face[vert_id];
   }
+
+  void project(Vec3d &v, const int vert_id)const;
 
 protected:
   VVVec4d linear_con;

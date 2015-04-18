@@ -178,10 +178,9 @@ void Simulator::init(const string &json_file){
 	assert_gt(coll_k,0.0f);
 	fem_solver->setCollK(coll_k);
 
-	double mu_s = 0.3, mu_k = 0.3;
-	jsonf.read("static_friction", mu_s, 0.3);
-	jsonf.read("kinetic_friction", mu_k, 0.3);
-	fem_solver->setFriction(mu_s, mu_k);
+	double mu = 0.1f;
+	jsonf.read("friction", mu);
+	fem_solver->setFriction(mu);
   }
 
   // set geom
@@ -335,15 +334,22 @@ void Simulator::init(const string &json_file){
 	}
   }
 
-  // set ground for collision
+  // set planes for collision
   {
-	vector<double> ground_y_delta_y;
-	if( jsonf.read("ground_y_delta_y", ground_y_delta_y) ){
-	  assert_eq(ground_y_delta_y.size(),2);
-	  fem_solver->collideGround(true, ground_y_delta_y[0], ground_y_delta_y[1]);
-	}else{
-	  fem_solver->collideGround(false);
+	VVec4d planes;
+	vector<double> delta_plane;
+	vector<vector<double> > plane_constraints;
+	if( jsonf.read("plane_con_delta", plane_constraints) ){
+	  for (int i = 0; i < plane_constraints.size(); ++i){
+		const vector<double> &P = plane_constraints[i];
+		assert_eq(P.size(), 5);
+		delta_plane.push_back(P[4]);
+		Vector4d one_p;
+		one_p << P[0], P[1], P[2], P[3];
+		planes.push_back(one_p);
+	  }
 	}
+	fem_solver->setCollidePlanes(planes, delta_plane);
   }
 
   fem_solver->init();

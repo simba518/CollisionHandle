@@ -12,215 +12,6 @@ USE_PRJ_NAMESPACE
 #define BLKL(IN,I) (IN).block(_offVarL[i],0,_offVarL[i+1]-_offVarL[i],1)
 #define BLKF(IN,I) (IN).block(_offVarF[i],0,_offVarF[i+1]-_offVarF[i],1)
 
-MprgpFemSolver::MprgpFemSolver(const int cOption):FemSolverExt(cOption){
-
-  solver_name = "MprgpFemSolver";
-  dcd_collider = boost::shared_ptr<LinearConCollider>(new LinearConCollider(false));
-  mprgp_max_it = 1000;
-  mprgp_tol = 1e-4;
-}
-
-void MprgpFemSolver::advance(const double dt){
-
-  FUNC_TIMER();
-  buildVarOffset();
-  initPos(dt);
-  initVel(dt);
-  handleCollDetection(dt);
-  forward(dt);
-  updateMesh(dt);
-  current_frame ++;
-}
-
-void MprgpFemSolver::buildVarOffset(){
-
-  _mesh->buildOffset();
-  assembleOffVar();
-}
-
-void MprgpFemSolver::initPos(const double dt){
-
-  x0.resize(nrVar());
-  x1.resize(nrVar());
-  X0.resize(nrVarL());
-  X1.resize(nrVarL());
-
-  for(int i=0; i<_mesh->nrB(); i++) {
-
-	const FEMSystem& sys=*(_mesh->getB(i)._system);
-	Vec xB,XB;
-	sys.getPos(xB);
-	sys.getPosL(XB);
-	BLK(x0,i)=xB;
-	BLKL(X0,i)=XB;
-  }
-}
-
-void MprgpFemSolver::getCollConstraints(SparseMatrix<double> &J, VectorXd &c)const{
-  
-  if (DCD == coll_type){
-	dcd_collider->getConstraints(J,c);
-  }else{
-	ccd_collider->getConstraints(J,c);
-  }
-}
-
-void MprgpFemSolver::CCDhandle(const double dt){
-
-  ccd_collider->reset(x0.size()/3);
-  forwardWithoutColl(dt);// compute new_pos
-  ccd_collider->collide(x0, new_pos);
-}
-
-void MprgpFemSolver::forwardWithoutColl(const double dt){
-    
-  Vec RHS(nrVar());
-  _LHS.reset(nrVar(),nrVar(),false);
-  _U.reset(nrVarF(),nrVar(),false);
-  buildLinearSystem(LHS_mat, RHS, dt);
-  ConjugateGradient<SparseMatrix<double> > solver;
-  new_pos = solver.compute(LHS_mat).solve(RHS); //@todo mprgp_tol,mprgp_max_it
-}
-
-void MprgpFemSolver::DCDhandle(){
-
-  dcd_collider->reset(x0.size()/3);
-
-  // ostringstream oss3;
-  // oss3 << saveResultsTo()+"/collisions/coll_"<< currentFrame() << ".vtk";
-  // DebugFEMCollider coll_debug( oss3.str(), 3 );
-  
-  for(int i=0; i<_mesh->nrB(); i++){
-	_mesh->getB(i)._system->beforeCollision();
-  }
-
-  // collide with the ground
-  if (collide_ground){
-	for(int i=0; i<_mesh->nrB(); i++)
-	  dcd_collider->handle( _mesh->getBPtr(i), ground_y, delta_y );
-  }
-
-  // collide with fixed objects
-  if(_geom){
-	// debug_fun( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
-	_mesh->getColl().collideGeom(*_geom,*dcd_collider,true);
-  }
-
-  // self collision
-  if(_tree.get<bool>("selfColl")){
-	// debug_fun( _mesh->getColl().collideMesh(coll_debug, true) );
-	_mesh->getColl().collideMesh(*dcd_collider,true);
-  }
-}
-
-void MprgpFemSolver::handleCollDetection(const double dt){
-
-  if(DCD == coll_type){
-	DCDhandle();
-  }else{
-	CCDhandle(dt);
-  }
-}
-
-void MprgpFemSolver::initVel(const double dt){
-
-  PHI.resize(nrVarL());
-  PSI.resize(nrVarL());
-
-  const double gamma=_tree.get<double>("gamma");
-  const double beta2=_tree.get<double>("beta2");
-  for(int i=0; i<_mesh->nrB(); i++) {
-
-	const FEMSystem& sys=*(_mesh->getB(i)._system);
-	Vec xB,XB,VB,AB;
-	sys.getPosL(XB);
-	sys.getVelL(VB);
-	sys.getAccelL(AB);
-
-	BLKL(PHI,i)=VB+(1.0f-gamma)*dt*AB;
-	BLKL(PSI,i)=XB+dt*VB+(1.0f-2.0f*beta2)*dt*dt*0.5f*AB;
-  }
-}
-
-void MprgpFemSolver::buildLinearSystem(SparseMatrix<double>&LHS_mat,VectorXd&RHS,const double dt){
-
-  FUNC_TIMER();
-
-  _LHS.clear();
-  _U.clear();
-
-  for ( int i = 0; i < _mesh->nrB(); i++) {
-	const FEMSystem& sys=*(_mesh->getB(i)._system);
-	Vec xB,XB;
-	sys.getPos(xB);
-	sys.getPosL(XB);
-	BLK(x1,i)=xB;
-	BLKL(X1,i)=XB;
-  }
-
-  const double beta=_tree.get<double>("beta");
-  for ( int i = 0; i < _mesh->nrB(); i++) {
-
-	const double bdt = beta*dt;
-	const FEMSystem& sys=*(_mesh->getB(i)._system);
-	const Vec MRHSLB=BLKL(PSI-X1,i);
-	const Vec CRHSB=BLK(x0-x1,i)*bdt;
-	Vec RHSB=Vec::Zero(sys.size());
-	sys.buildSystem(1.0f,bdt*dt,bdt,_LHS,_U,MRHSLB,CRHSB,bdt*dt,RHSB,_offVar[i]);
-	BLK(RHS,i)=RHSB;
-  }
-
-  const boost::shared_ptr<const TRIPS> trips = _LHS.getSparse();
-  LHS_mat.resize(_LHS.rows(), _LHS.cols());
-  LHS_mat.setFromTriplets(trips->begin(),trips->end());
-
-  assert_eq(LHS_mat.rows(), LHS_mat.cols());
-  assert_eq(LHS_mat.cols(), x1.size());
-  RHS += LHS_mat*x1;
-}
-
-double MprgpFemSolver::updatePos(){
-
-  const VectorXd DELTA = new_pos-x1;
-  x1 = new_pos;
-  for(int i=0; i<_mesh->nrB(); i++) {
-	FEMSystem& sys=*(_mesh->getB(i)._system);
-	sys.setPos(BLK(x1,i));
-  }
-
-  double tol_err = 0;
-  if(DELTA.size() > 0){
-	tol_err = DELTA.cwiseAbs().maxCoeff();
-  }
-
-  return tol_err;
-}
-
-void MprgpFemSolver::updateMesh(const double dt){
-
-  const double beta=_tree.get<double>("beta");
-  const double gamma=_tree.get<double>("gamma");
-  for(int i=0; i<_mesh->nrB(); i++) {
-	FEMSystem& sys=*(_mesh->getB(i)._system);
-	Vec XB,VB,AB;
-	sys.getPosL(XB);
-	AB=(XB-BLKL(PSI,i))/(beta*dt*dt);
-	VB=BLKL(PHI,i)+AB*gamma*dt;
-
-	sys.setVelL(VB);
-	sys.setAccelL(AB);
-  }
-  _mesh->updateMesh();
-}
-
-void MprgpFemSolver::print()const{
-
-  FemSolverExt::print();
-  INFO_LOG("mprgp it: "<<mprgp_max_it);
-  INFO_LOG("mprgp tol: "<<mprgp_tol);
-  dcd_collider->print();
-}
-
 void FemSolverExt::setVel(const Vector3d &vel, const int body_id){
 
   assert_in(body_id, 0, _mesh->nrB()-1);
@@ -392,6 +183,248 @@ void FemSolverExt::solve(const FEMSystemMatrix &LHS, const Vec &RHS, Vec &DELTA)
   }
 }
 
+MprgpFemSolver::MprgpFemSolver(const int cOption):FemSolverExt(cOption){
+
+  solver_name = "MprgpFemSolver";
+  dcd_collider = boost::shared_ptr<LinearConCollider>(new LinearConCollider(false));
+  mprgp_max_it = 1000;
+  mprgp_tol = 1e-4;
+}
+
+void MprgpFemSolver::advance(const double dt){
+
+  FUNC_TIMER();
+  buildVarOffset();
+  initPos(dt);
+  initVel(dt);
+  handleCollDetection(dt);
+  forward(dt);
+  updateMesh(dt);
+  current_frame ++;
+}
+
+void MprgpFemSolver::buildVarOffset(){
+
+  _mesh->buildOffset();
+  assembleOffVar();
+}
+
+void MprgpFemSolver::initPos(const double dt){
+
+  x0.resize(nrVar());
+  x1.resize(nrVar());
+  X0.resize(nrVarL());
+  X1.resize(nrVarL());
+
+  for(int i=0; i<_mesh->nrB(); i++) {
+
+	const FEMSystem& sys=*(_mesh->getB(i)._system);
+	Vec xB,XB;
+	sys.getPos(xB);
+	sys.getPosL(XB);
+	BLK(x0,i)=xB;
+	BLKL(X0,i)=XB;
+  }
+}
+
+void MprgpFemSolver::getCollConstraints(SparseMatrix<double> &J, VectorXd &c)const{
+  
+  if (DCD == coll_type){
+	dcd_collider->getConstraints(J,c);
+  }else{
+	ccd_collider->getConstraints(J,c);
+  }
+}
+
+void MprgpFemSolver::CCDhandle(const double dt){
+
+  ccd_collider->reset(x0.size()/3);
+  forwardWithoutColl(dt);// compute new_pos
+  ccd_collider->collide(x0, new_pos);
+}
+
+void MprgpFemSolver::forwardWithoutColl(const double dt){
+    
+  Vec RHS(nrVar());
+  _LHS.reset(nrVar(),nrVar(),false);
+  _U.reset(nrVarF(),nrVar(),false);
+  buildLinearSystem(LHS_mat, RHS, dt);
+  ConjugateGradient<SparseMatrix<double> > solver;
+  new_pos = solver.compute(LHS_mat).solve(RHS); //@todo mprgp_tol,mprgp_max_it
+}
+
+void MprgpFemSolver::DCDhandle(){
+
+  dcd_collider->reset(x0.size()/3);
+
+  // ostringstream oss3;
+  // oss3 << saveResultsTo()+"/collisions/coll_"<< currentFrame() << ".vtk";
+  // DebugFEMCollider coll_debug( oss3.str(), 3 );
+  
+  for(int i=0; i<_mesh->nrB(); i++){
+	_mesh->getB(i)._system->beforeCollision();
+  }
+
+  // collide with the planes
+  for(int i=0; i<_mesh->nrB(); i++){
+	for (int p = 0; p < (int)planes.size(); ++p)
+	  dcd_collider->handle( _mesh->getBPtr(i), planes[p], delta_plane[p] );
+  }
+
+  // collide with fixed objects
+  if(_geom){
+	// debug_fun( _mesh->getColl().collideGeom( *_geom,coll_debug,true ) );
+	_mesh->getColl().collideGeom(*_geom,*dcd_collider,true);
+  }
+
+  // self collision
+  if(_tree.get<bool>("selfColl")){
+	// debug_fun( _mesh->getColl().collideMesh(coll_debug, true) );
+	_mesh->getColl().collideMesh(*dcd_collider,true);
+  }
+}
+
+void MprgpFemSolver::handleCollDetection(const double dt){
+
+  if(DCD == coll_type){
+	DCDhandle();
+  }else{
+	CCDhandle(dt);
+  }
+}
+
+void MprgpFemSolver::initVel(const double dt){
+
+  PHI.resize(nrVarL());
+  PSI.resize(nrVarL());
+
+  const double gamma=_tree.get<double>("gamma");
+  const double beta2=_tree.get<double>("beta2");
+  for(int i=0; i<_mesh->nrB(); i++) {
+
+	const FEMSystem& sys=*(_mesh->getB(i)._system);
+	Vec xB,XB,VB,AB;
+	sys.getPosL(XB);
+	sys.getVelL(VB);
+	sys.getAccelL(AB);
+
+	BLKL(PHI,i)=VB+(1.0f-gamma)*dt*AB;
+	BLKL(PSI,i)=XB+dt*VB+(1.0f-2.0f*beta2)*dt*dt*0.5f*AB;
+  }
+}
+
+void MprgpFemSolver::buildLinearSystem(SparseMatrix<double>&LHS_mat,VectorXd&RHS,const double dt){
+
+  FUNC_TIMER();
+
+  _LHS.clear();
+  _U.clear();
+
+  for ( int i = 0; i < _mesh->nrB(); i++) {
+	const FEMSystem& sys=*(_mesh->getB(i)._system);
+	Vec xB,XB;
+	sys.getPos(xB);
+	sys.getPosL(XB);
+	BLK(x1,i)=xB;
+	BLKL(X1,i)=XB;
+  }
+
+  const double beta=_tree.get<double>("beta");
+  for ( int i = 0; i < _mesh->nrB(); i++) {
+
+	const double bdt = beta*dt;
+	const FEMSystem& sys=*(_mesh->getB(i)._system);
+	const Vec MRHSLB=BLKL(PSI-X1,i);
+	const Vec CRHSB=BLK(x0-x1,i)*bdt;
+	Vec RHSB=Vec::Zero(sys.size());
+	sys.buildSystem(1.0f,bdt*dt,bdt,_LHS,_U,MRHSLB,CRHSB,bdt*dt,RHSB,_offVar[i]);
+	BLK(RHS,i)=RHSB;
+  }
+
+  const boost::shared_ptr<const TRIPS> trips = _LHS.getSparse();
+  LHS_mat.resize(_LHS.rows(), _LHS.cols());
+  LHS_mat.setFromTriplets(trips->begin(),trips->end());
+
+  assert_eq(LHS_mat.rows(), LHS_mat.cols());
+  assert_eq(LHS_mat.cols(), x1.size());
+  RHS += LHS_mat*x1;
+
+  if(friction_forces.size() != RHS.size()){
+	friction_forces.resize(RHS.size());
+	friction_forces.setZero();
+  }
+  RHS += friction_forces;
+}
+
+double MprgpFemSolver::updatePos(){
+
+  const VectorXd DELTA = new_pos-x1;
+  x1 = new_pos;
+  for(int i=0; i<_mesh->nrB(); i++) {
+	FEMSystem& sys=*(_mesh->getB(i)._system);
+	sys.setPos(BLK(x1,i));
+  }
+
+  double tol_err = 0;
+  if(DELTA.size() > 0){
+	tol_err = DELTA.cwiseAbs().maxCoeff();
+  }
+
+  return tol_err;
+}
+
+void MprgpFemSolver::updateMesh(const double dt){
+
+  const double beta=_tree.get<double>("beta");
+  const double gamma=_tree.get<double>("gamma");
+  for(int i=0; i<_mesh->nrB(); i++) {
+	FEMSystem& sys=*(_mesh->getB(i)._system);
+	Vec XB,VB,AB;
+	sys.getPosL(XB);
+	AB=(XB-BLKL(PSI,i))/(beta*dt*dt);
+	VB=BLKL(PHI,i)+AB*gamma*dt;
+
+	sys.setVelL(VB);
+	sys.setAccelL(AB);
+  }
+  _mesh->updateMesh();
+}
+
+void MprgpFemSolver::print()const{
+
+  FemSolverExt::print();
+  INFO_LOG("mprgp it: "<<mprgp_max_it);
+  INFO_LOG("mprgp tol: "<<mprgp_tol);
+  dcd_collider->print();
+}
+
+void MprgpFemSolver::computeFrictionForces(const VectorXd &RHS, const VectorXd &last_pos, 
+										   const VectorXd &cur_pos, const double dt){
+  
+  const VectorXd coll_f = LHS_mat*cur_pos - RHS;
+  const VectorXd v = (cur_pos-last_pos)/dt;
+  friction_forces.resize(v.size());
+  friction_forces.setZero();
+  for (int i = 0; i < friction_forces.size()/3; ++i){
+    if( collided(i) ){
+	  const Vector3d fi = coll_f.segment<3>(i*3);
+	  Vector3d vi = v.segment<3>(i*3);
+	  if(DCD == coll_type){
+		dcd_collider->project(vi, i);
+	  }else{
+		ccd_collider->project(vi, i);
+	  }
+	  friction_forces.segment<3>(i*3) = -friction_mu*fi.norm()*vi;
+	}
+  }
+}
+
+bool MprgpFemSolver::collided(const int vert_id)const{
+
+  return ( (dcd_collider!=NULL) && dcd_collider->collided(vert_id)) || 
+	( (ccd_collider!=NULL) && ccd_collider->collided(vert_id));
+}
+
 #undef BLK
 #undef BLKL
 #undef BLKF
@@ -410,6 +443,7 @@ void MoseckFemSolver::forward(const double dt){
   getCollConstraints(A,c);
 
   UTILITY::Timer timer;
+  const VectorXd last_pos = x1;
   for (int i = 0; i < maxIter; i++) {
 
 	MoseckQPSolver solver;
@@ -426,6 +460,7 @@ void MoseckFemSolver::forward(const double dt){
 	if (updatePos() < eps)
 	  break;
   }
+  computeFrictionForces(RHS, last_pos, new_pos, dt);
 }
 
 void ICAFemSolver::forward(const double dt){
@@ -443,6 +478,7 @@ void ICAFemSolver::forward(const double dt){
   INFO_LOG("constraints num: " << c.size());
 
   UTILITY::Timer timer;
+  const VectorXd last_pos = x1;
   for (int i = 0; i < maxIter; i++) {
 
 	buildLinearSystem(LHS_mat, RHS, dt);
@@ -473,6 +509,7 @@ void ICAFemSolver::forward(const double dt){
 	if (updatePos() < eps)
 	  break;
   }
+  computeFrictionForces(RHS, last_pos, new_pos, dt);
 }
 
 void DecoupledMprgpFemSolver::forward(const double dt){
@@ -495,6 +532,7 @@ void DecoupledMprgpFemSolver::forward(const double dt){
   DecoupledConProjector<double> projector(J, JJt, c);
 
   UTILITY::Timer timer;
+  const VectorXd last_pos = x1;
   for (int i = 0; i < maxIter; i++) {
 
 	buildLinearSystem(LHS_mat, RHS, dt);
@@ -510,4 +548,5 @@ void DecoupledMprgpFemSolver::forward(const double dt){
 	if (updatePos() < eps)
 	  break;
   }
+  computeFrictionForces(RHS, last_pos, new_pos, dt);
 }
